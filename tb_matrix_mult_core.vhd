@@ -4,7 +4,7 @@ use ieee.numeric_std.all;
 use std.textio.all;
 use std.env.all;
 
-entity tb_matrix_mult_core is
+entity tb_matrix_mult_top is
     generic (
         DATA_WIDTH : positive := 16;
         ACC_WIDTH  : positive := 32;
@@ -16,31 +16,26 @@ entity tb_matrix_mult_core is
         INPUT_FILE  : string := "matrix_inputs.txt";
         OUTPUT_FILE : string := "matrix_outputs.txt"
     );
-end entity tb_matrix_mult_core;
+end entity tb_matrix_mult_top;
 
-architecture sim of tb_matrix_mult_core is
+architecture sim of tb_matrix_mult_top is
 
     constant CLK_PERIOD : time := 10 ns;
 
-    signal clk   : std_logic := '0';
-    signal rst   : std_logic := '0';
+    signal clk : std_logic := '0';
+    signal rst : std_logic := '0';
+
+    signal wr_en      : std_logic := '0';
+    signal matrix_sel : std_logic := '0';
+    signal wr_addr    : unsigned(1 downto 0) := (others => '0');
+    signal data_in    : signed(DATA_WIDTH-1 downto 0) := (others => '0');
+
     signal start : std_logic := '0';
+    signal busy  : std_logic;
     signal done  : std_logic;
 
-    signal a00 : signed(DATA_WIDTH-1 downto 0) := (others => '0');
-    signal a01 : signed(DATA_WIDTH-1 downto 0) := (others => '0');
-    signal a10 : signed(DATA_WIDTH-1 downto 0) := (others => '0');
-    signal a11 : signed(DATA_WIDTH-1 downto 0) := (others => '0');
-
-    signal b00 : signed(DATA_WIDTH-1 downto 0) := (others => '0');
-    signal b01 : signed(DATA_WIDTH-1 downto 0) := (others => '0');
-    signal b10 : signed(DATA_WIDTH-1 downto 0) := (others => '0');
-    signal b11 : signed(DATA_WIDTH-1 downto 0) := (others => '0');
-
-    signal c00 : signed(ACC_WIDTH-1 downto 0);
-    signal c01 : signed(ACC_WIDTH-1 downto 0);
-    signal c10 : signed(ACC_WIDTH-1 downto 0);
-    signal c11 : signed(ACC_WIDTH-1 downto 0);
+    signal result_sel : unsigned(1 downto 0) := (others => '0');
+    signal data_out   : signed(ACC_WIDTH-1 downto 0);
 
     function is_blank_or_comment(s : string) return boolean is
     begin
@@ -73,35 +68,53 @@ architecture sim of tb_matrix_mult_core is
         end loop;
     end procedure;
 
+    procedure write_element(
+        signal clk        : in std_logic;
+        signal wr_en      : out std_logic;
+        signal matrix_sel : out std_logic;
+        signal wr_addr    : out unsigned(1 downto 0);
+        signal data_in    : out signed(DATA_WIDTH-1 downto 0);
+        constant sel      : in std_logic;
+        constant addr     : in integer;
+        constant value    : in integer
+    ) is
+    begin
+        matrix_sel <= sel;
+        wr_addr    <= to_unsigned(addr, 2);
+        data_in    <= to_signed(value, DATA_WIDTH);
+        wr_en      <= '1';
+
+        wait until rising_edge(clk);
+
+        wr_en <= '0';
+
+        wait until rising_edge(clk);
+    end procedure;
+
 begin
 
     clk <= not clk after CLK_PERIOD / 2;
 
-    dut : entity work.matrix_mult_core
+    dut : entity work.matrix_mult_top
         generic map (
             DATA_WIDTH => DATA_WIDTH,
             ACC_WIDTH  => ACC_WIDTH
         )
         port map (
-            clk   => clk,
-            rst   => rst,
+            clk => clk,
+            rst => rst,
+
+            wr_en      => wr_en,
+            matrix_sel => matrix_sel,
+            wr_addr    => wr_addr,
+            data_in    => data_in,
+
             start => start,
+            busy  => busy,
             done  => done,
 
-            a00 => a00,
-            a01 => a01,
-            a10 => a10,
-            a11 => a11,
-
-            b00 => b00,
-            b01 => b01,
-            b10 => b10,
-            b11 => b11,
-
-            c00 => c00,
-            c01 => c01,
-            c10 => c10,
-            c11 => c11
+            result_sel => result_sel,
+            data_out   => data_out
         );
 
     stim_proc : process
@@ -146,7 +159,7 @@ begin
         assert ok_in report "Arquivo matrix_inputs.txt vazio ou invalido." severity failure;
 
         next_data_line(output_vectors, out_line, ok_out);
-        assert ok_out report "Arquivo matrix_output.txt vazio ou invalido." severity failure;
+        assert ok_out report "Arquivo matrix_outputs.txt vazio ou invalido." severity failure;
 
         while true loop
             next_data_line(input_vectors, in_line, ok_in);
@@ -203,17 +216,15 @@ begin
             next_data_line(output_vectors, out_line, ok_out);
             assert ok_out report "Esperado END_TEST no arquivo de saida." severity failure;
 
-            a00 <= to_signed(va00, DATA_WIDTH);
-            a01 <= to_signed(va01, DATA_WIDTH);
-            a10 <= to_signed(va10, DATA_WIDTH);
-            a11 <= to_signed(va11, DATA_WIDTH);
+            write_element(clk, wr_en, matrix_sel, wr_addr, data_in, '0', 0, va00);
+            write_element(clk, wr_en, matrix_sel, wr_addr, data_in, '0', 1, va01);
+            write_element(clk, wr_en, matrix_sel, wr_addr, data_in, '0', 2, va10);
+            write_element(clk, wr_en, matrix_sel, wr_addr, data_in, '0', 3, va11);
 
-            b00 <= to_signed(vb00, DATA_WIDTH);
-            b01 <= to_signed(vb01, DATA_WIDTH);
-            b10 <= to_signed(vb10, DATA_WIDTH);
-            b11 <= to_signed(vb11, DATA_WIDTH);
-
-            wait until rising_edge(clk);
+            write_element(clk, wr_en, matrix_sel, wr_addr, data_in, '1', 0, vb00);
+            write_element(clk, wr_en, matrix_sel, wr_addr, data_in, '1', 1, vb01);
+            write_element(clk, wr_en, matrix_sel, wr_addr, data_in, '1', 2, vb10);
+            write_element(clk, wr_en, matrix_sel, wr_addr, data_in, '1', 3, vb11);
 
             start <= '1';
             wait until rising_edge(clk);
@@ -222,24 +233,32 @@ begin
             wait until rising_edge(clk) and done = '1';
             wait until rising_edge(clk);
 
-            assert c00 = to_signed(exp_c00, ACC_WIDTH)
+            result_sel <= to_unsigned(0, 2);
+            wait for 1 ns;
+            assert data_out = to_signed(exp_c00, ACC_WIDTH)
                 report "Teste " & integer'image(test_id) & " falhou: C00 incorreto. Esperado "
-                & integer'image(exp_c00) & ", obtido " & integer'image(to_integer(c00))
+                & integer'image(exp_c00) & ", obtido " & integer'image(to_integer(data_out))
                 severity failure;
 
-            assert c01 = to_signed(exp_c01, ACC_WIDTH)
+            result_sel <= to_unsigned(1, 2);
+            wait for 1 ns;
+            assert data_out = to_signed(exp_c01, ACC_WIDTH)
                 report "Teste " & integer'image(test_id) & " falhou: C01 incorreto. Esperado "
-                & integer'image(exp_c01) & ", obtido " & integer'image(to_integer(c01))
+                & integer'image(exp_c01) & ", obtido " & integer'image(to_integer(data_out))
                 severity failure;
 
-            assert c10 = to_signed(exp_c10, ACC_WIDTH)
+            result_sel <= to_unsigned(2, 2);
+            wait for 1 ns;
+            assert data_out = to_signed(exp_c10, ACC_WIDTH)
                 report "Teste " & integer'image(test_id) & " falhou: C10 incorreto. Esperado "
-                & integer'image(exp_c10) & ", obtido " & integer'image(to_integer(c10))
+                & integer'image(exp_c10) & ", obtido " & integer'image(to_integer(data_out))
                 severity failure;
 
-            assert c11 = to_signed(exp_c11, ACC_WIDTH)
+            result_sel <= to_unsigned(3, 2);
+            wait for 1 ns;
+            assert data_out = to_signed(exp_c11, ACC_WIDTH)
                 report "Teste " & integer'image(test_id) & " falhou: C11 incorreto. Esperado "
-                & integer'image(exp_c11) & ", obtido " & integer'image(to_integer(c11))
+                & integer'image(exp_c11) & ", obtido " & integer'image(to_integer(data_out))
                 severity failure;
 
             report "Teste " & integer'image(test_id) & " passou." severity note;

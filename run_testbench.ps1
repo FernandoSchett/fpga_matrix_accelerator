@@ -9,7 +9,7 @@ $ErrorActionPreference = "Stop"
 
 $ProjectDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectName = "fpga_matrix_accelerator"
-$TestbenchEntity = "tb_matrix_mult_core"
+$TestbenchEntity = "tb_matrix_mult_top"
 $PassMarker = "SIM_RESULT: PASS"
 
 Set-Location $ProjectDir
@@ -183,6 +183,7 @@ Invoke-Step @($vmap, "work", "work")
 
 Invoke-Step @($vcom, "-2008", "-work", "work", "mac_unity.vhd")
 Invoke-Step @($vcom, "-2008", "-work", "work", "matrix_mult_core.vhd")
+Invoke-Step @($vcom, "-2008", "-work", "work", "matrix_mult_top.vhd")
 Invoke-Step @($vcom, "-2008", "-work", "work", "tb_matrix_mult_core.vhd")
 
 $transcript = Invoke-CapturedStep @(

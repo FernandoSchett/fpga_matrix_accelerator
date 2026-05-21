@@ -23,6 +23,11 @@ entity matrix_mult_core is
         b10 : in signed(DATA_WIDTH-1 downto 0);
         b11 : in signed(DATA_WIDTH-1 downto 0);
 
+        c00_in : in signed(ACC_WIDTH-1 downto 0);
+        c01_in : in signed(ACC_WIDTH-1 downto 0);
+        c10_in : in signed(ACC_WIDTH-1 downto 0);
+        c11_in : in signed(ACC_WIDTH-1 downto 0);
+
         c00 : out signed(ACC_WIDTH-1 downto 0);
         c01 : out signed(ACC_WIDTH-1 downto 0);
         c10 : out signed(ACC_WIDTH-1 downto 0);
@@ -49,6 +54,11 @@ architecture rtl of matrix_mult_core is
     signal mac_a      : signed(DATA_WIDTH-1 downto 0) := (others => '0');
     signal mac_b      : signed(DATA_WIDTH-1 downto 0) := (others => '0');
     signal mac_result : signed(ACC_WIDTH-1 downto 0);
+
+    signal c00_base_reg : signed(ACC_WIDTH-1 downto 0) := (others => '0');
+    signal c01_base_reg : signed(ACC_WIDTH-1 downto 0) := (others => '0');
+    signal c10_base_reg : signed(ACC_WIDTH-1 downto 0) := (others => '0');
+    signal c11_base_reg : signed(ACC_WIDTH-1 downto 0) := (others => '0');
 
     signal c00_reg : signed(ACC_WIDTH-1 downto 0) := (others => '0');
     signal c01_reg : signed(ACC_WIDTH-1 downto 0) := (others => '0');
@@ -134,6 +144,12 @@ begin
             j_idx    <= 0;
             k_idx    <= 0;
             acc_reg  <= (others => '0');
+
+            c00_base_reg <= (others => '0');
+            c01_base_reg <= (others => '0');
+            c10_base_reg <= (others => '0');
+            c11_base_reg <= (others => '0');
+
             c00_reg  <= (others => '0');
             c01_reg  <= (others => '0');
             c10_reg  <= (others => '0');
@@ -152,6 +168,11 @@ begin
                     k_idx    <= 0;
 
                     if start = '1' then
+                        c00_base_reg <= c00_in;
+                        c01_base_reg <= c01_in;
+                        c10_base_reg <= c10_in;
+                        c11_base_reg <= c11_in;
+
                         state <= COMPUTE;
                     end if;
 
@@ -166,13 +187,13 @@ begin
 
                 when WRITE_RESULT =>
                     if i_idx = 0 and j_idx = 0 then
-                        c00_reg <= acc_reg;
+                        c00_reg <= c00_base_reg + acc_reg;
                     elsif i_idx = 0 and j_idx = 1 then
-                        c01_reg <= acc_reg;
+                        c01_reg <= c01_base_reg + acc_reg;
                     elsif i_idx = 1 and j_idx = 0 then
-                        c10_reg <= acc_reg;
+                        c10_reg <= c10_base_reg + acc_reg;
                     else
-                        c11_reg <= acc_reg;
+                        c11_reg <= c11_base_reg + acc_reg;
                     end if;
 
                     acc_reg <= (others => '0');

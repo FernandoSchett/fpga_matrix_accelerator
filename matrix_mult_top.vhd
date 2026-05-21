@@ -16,6 +16,10 @@ entity matrix_mult_top is
         wr_addr    : in unsigned(1 downto 0);
         data_in    : in signed(DATA_WIDTH-1 downto 0);
 
+        cin_wr_en   : in std_logic;
+        cin_addr    : in unsigned(1 downto 0);
+        cin_data_in : in signed(ACC_WIDTH-1 downto 0);
+
         start : in std_logic;
         busy  : out std_logic;
         done  : out std_logic;
@@ -44,6 +48,11 @@ architecture rtl of matrix_mult_top is
     signal b01_reg : signed(DATA_WIDTH-1 downto 0) := (others => '0');
     signal b10_reg : signed(DATA_WIDTH-1 downto 0) := (others => '0');
     signal b11_reg : signed(DATA_WIDTH-1 downto 0) := (others => '0');
+
+    signal c00_in_reg : signed(ACC_WIDTH-1 downto 0) := (others => '0');
+    signal c01_in_reg : signed(ACC_WIDTH-1 downto 0) := (others => '0');
+    signal c10_in_reg : signed(ACC_WIDTH-1 downto 0) := (others => '0');
+    signal c11_in_reg : signed(ACC_WIDTH-1 downto 0) := (others => '0');
 
     signal c00_wire : signed(ACC_WIDTH-1 downto 0);
     signal c01_wire : signed(ACC_WIDTH-1 downto 0);
@@ -88,6 +97,11 @@ begin
             b10 => b10_reg,
             b11 => b11_reg,
 
+            c00_in => c00_in_reg,
+            c01_in => c01_in_reg,
+            c10_in => c10_in_reg,
+            c11_in => c11_in_reg,
+
             c00 => c00_wire,
             c01 => c01_wire,
             c10 => c10_wire,
@@ -108,6 +122,11 @@ begin
             b01_reg <= (others => '0');
             b10_reg <= (others => '0');
             b11_reg <= (others => '0');
+
+            c00_in_reg <= (others => '0');
+            c01_in_reg <= (others => '0');
+            c10_in_reg <= (others => '0');
+            c11_in_reg <= (others => '0');
 
             core_start <= '0';
             busy_reg   <= '0';
@@ -147,6 +166,19 @@ begin
                                     b11_reg <= data_in;
                             end case;
                         end if;
+                    end if;
+
+                    if cin_wr_en = '1' then
+                        case cin_addr is
+                            when "00" =>
+                                c00_in_reg <= cin_data_in;
+                            when "01" =>
+                                c01_in_reg <= cin_data_in;
+                            when "10" =>
+                                c10_in_reg <= cin_data_in;
+                            when others =>
+                                c11_in_reg <= cin_data_in;
+                        end case;
                     end if;
 
                     if start = '1' then

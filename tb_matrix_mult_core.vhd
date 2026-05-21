@@ -30,6 +30,10 @@ architecture sim of tb_matrix_mult_top is
     signal wr_addr    : unsigned(1 downto 0) := (others => '0');
     signal data_in    : signed(DATA_WIDTH-1 downto 0) := (others => '0');
 
+    signal cin_wr_en   : std_logic := '0';
+    signal cin_addr    : unsigned(1 downto 0) := (others => '0');
+    signal cin_data_in : signed(ACC_WIDTH-1 downto 0) := (others => '0');
+
     signal start : std_logic := '0';
     signal busy  : std_logic;
     signal done  : std_logic;
@@ -91,6 +95,26 @@ architecture sim of tb_matrix_mult_top is
         wait until rising_edge(clk);
     end procedure;
 
+    procedure write_cin_element(
+        signal clk         : in std_logic;
+        signal cin_wr_en   : out std_logic;
+        signal cin_addr    : out unsigned(1 downto 0);
+        signal cin_data_in : out signed(ACC_WIDTH-1 downto 0);
+        constant addr      : in integer;
+        constant value     : in integer
+    ) is
+    begin
+        cin_addr    <= to_unsigned(addr, 2);
+        cin_data_in <= to_signed(value, ACC_WIDTH);
+        cin_wr_en   <= '1';
+
+        wait until rising_edge(clk);
+
+        cin_wr_en <= '0';
+
+        wait until rising_edge(clk);
+    end procedure;
+
 begin
 
     clk <= not clk after CLK_PERIOD / 2;
@@ -108,6 +132,10 @@ begin
             matrix_sel => matrix_sel,
             wr_addr    => wr_addr,
             data_in    => data_in,
+
+            cin_wr_en   => cin_wr_en,
+            cin_addr    => cin_addr,
+            cin_data_in => cin_data_in,
 
             start => start,
             busy  => busy,
@@ -225,6 +253,11 @@ begin
             write_element(clk, wr_en, matrix_sel, wr_addr, data_in, '1', 1, vb01);
             write_element(clk, wr_en, matrix_sel, wr_addr, data_in, '1', 2, vb10);
             write_element(clk, wr_en, matrix_sel, wr_addr, data_in, '1', 3, vb11);
+
+            write_cin_element(clk, cin_wr_en, cin_addr, cin_data_in, 0, 0);
+            write_cin_element(clk, cin_wr_en, cin_addr, cin_data_in, 1, 0);
+            write_cin_element(clk, cin_wr_en, cin_addr, cin_data_in, 2, 0);
+            write_cin_element(clk, cin_wr_en, cin_addr, cin_data_in, 3, 0);
 
             start <= '1';
             wait until rising_edge(clk);

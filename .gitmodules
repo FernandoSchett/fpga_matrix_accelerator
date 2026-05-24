@@ -1,0 +1,3 @@
+[submodule "py_matrix_host"]
+	path = py_matrix_host
+	url = ./py_matrix_host

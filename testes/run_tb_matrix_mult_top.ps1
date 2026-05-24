@@ -11,7 +11,7 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $runner = Join-Path $scriptDir "_run_testbench.ps1"
 
 if ($EnvFile -eq "") {
-    $EnvFile = Join-Path (Split-Path -Parent $scriptDir) ".env"
+    $EnvFile = Join-Path (Split-Path -Parent $scriptDir) "py_matrix_host\.env"
 }
 
 $sources = @(

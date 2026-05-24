@@ -27,7 +27,7 @@ $PassMarker = "SIM_RESULT: PASS"
 Set-Location $ProjectDir
 
 if ($EnvFile -eq "") {
-    $EnvFile = Join-Path $ProjectDir ".env"
+    $EnvFile = Join-Path $ProjectDir "py_matrix_host\.env"
 }
 
 function Read-DotEnv {
@@ -87,6 +87,22 @@ function Get-ConfigInt {
 
     $value = Get-ConfigValue -Config $Config -Key $Key -Default ([string]$Default)
     return [int]$value
+}
+
+function Convert-MatrixHostPathForSimulation {
+    param([string]$PathValue)
+
+    $normalized = $PathValue.Replace('\', '/')
+
+    if ([System.IO.Path]::IsPathRooted($PathValue)) {
+        return $normalized
+    }
+
+    if ($normalized.StartsWith("py_matrix_host/")) {
+        return $normalized
+    }
+
+    return "py_matrix_host/$normalized"
 }
 
 function Find-Tool {
@@ -161,8 +177,10 @@ if ($GenerateVectors -or $UseEnvGenerics -or $Require2x2Env) {
     $colsA = Get-ConfigInt -Config $config -Key "COLS_A" -Default 2
     $rowsB = Get-ConfigInt -Config $config -Key "ROWS_B" -Default $colsA
     $colsB = Get-ConfigInt -Config $config -Key "COLS_B" -Default 2
-    $inputFile = Get-ConfigValue -Config $config -Key "MATRIX_INPUT_FILE" -Default "matrix_inputs.txt"
-    $outputFile = Get-ConfigValue -Config $config -Key "MATRIX_OUTPUT_FILE" -Default "matrix_outputs.txt"
+    $inputFileConfig = Get-ConfigValue -Config $config -Key "MATRIX_INPUT_FILE" -Default "matrix/matrix_inputs.txt"
+    $outputFileConfig = Get-ConfigValue -Config $config -Key "MATRIX_OUTPUT_FILE" -Default "matrix/matrix_outputs.txt"
+    $inputFile = Convert-MatrixHostPathForSimulation -PathValue $inputFileConfig
+    $outputFile = Convert-MatrixHostPathForSimulation -PathValue $outputFileConfig
 
     if ($colsA -ne $rowsB) {
         throw "Config invalida: COLS_A precisa ser igual a ROWS_B para calcular A x B."

@@ -21,6 +21,7 @@ output_files/
 simulation/
 modelsim/
 work/
+experiments/results/
 graficos_uteis/
 .venv/
 dados_pre_processados/
@@ -37,6 +38,7 @@ dados_pre_processados/
 *.sld
 msim_transcript
 *.txt
+fpga_matrix_accelerator_n*_t*_m*.qsf
 # -------------------------------------
 # Arquivos de Programação (Bitstreams)
 # -------------------------------------

@@ -13,6 +13,7 @@ param(
     [switch]$SkipGenerate,
     [switch]$UseEnvGenerics,
     [switch]$Require2x2Env,
+    [string[]]$ExtraGenerics = @(),
     [switch]$Quartus,
     [switch]$QuartusFull
 )
@@ -217,6 +218,8 @@ if ($GenerateVectors -or $UseEnvGenerics -or $Require2x2Env) {
         )
     }
 }
+
+$genericArgs = $genericArgs + $ExtraGenerics
 
 if ($Quartus) {
     $quartusMap = Find-QuartusTool -Name "quartus_map"

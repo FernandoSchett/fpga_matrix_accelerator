@@ -36,7 +36,7 @@ dados_pre_processados/
 *.qws
 *.sld
 msim_transcript
-
+*.txt
 # -------------------------------------
 # Arquivos de Programação (Bitstreams)
 # -------------------------------------

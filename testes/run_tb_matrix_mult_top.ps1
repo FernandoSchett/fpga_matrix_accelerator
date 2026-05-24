@@ -15,10 +15,10 @@ if ($EnvFile -eq "") {
 }
 
 $sources = @(
-    "mac_unity.vhd",
-    "matrix_mult_core.vhd",
+    "rtl/blocks/mac_unit.vhd",
+    "rtl/core/matrix_mult_core.vhd",
     "matrix_mult_top.vhd",
-    "tb_matrix_mult_core.vhd"
+    "testbench/tb_matrix_mult_top.vhd"
 )
 
 $args = @{

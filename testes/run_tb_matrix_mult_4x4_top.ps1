@@ -9,10 +9,10 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $runner = Join-Path $scriptDir "_run_testbench.ps1"
 
 $sources = @(
-    "mac_unity.vhd",
-    "matrix_mult_core.vhd",
+    "rtl/blocks/mac_unit.vhd",
+    "rtl/core/matrix_mult_core.vhd",
     "matrix_mult_4x4_top.vhd",
-    "tb_matrix_mult_4x4_top.vhd"
+    "testbench/tb_matrix_mult_4x4_top.vhd"
 )
 
 $args = @{

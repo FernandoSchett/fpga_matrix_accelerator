@@ -10,6 +10,10 @@ from pathlib import Path
 from typing import Any
 
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+DEFAULT_RESULTS_DIR = SCRIPT_DIR / "results"
+
+
 CSV_COLUMNS = [
     "run_id",
     "top_entity",
@@ -64,13 +68,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--runs-dir",
         type=Path,
-        default=Path("results/runs"),
+        default=DEFAULT_RESULTS_DIR / "runs",
         help="Directory containing per-run folders.",
     )
     parser.add_argument(
         "--output-csv",
         type=Path,
-        default=Path("results/experiment_results.csv"),
+        default=DEFAULT_RESULTS_DIR / "experiment_results.csv",
         help="CSV output path.",
     )
     return parser.parse_args()

@@ -1,6 +1,6 @@
 {
   "experiment_name": "01_compute_sweep",
-  "description": "Sweep de tile_size e num_macs",
+  "description": "Sweep principal de tile_size e num_macs para estressar DSPs da Cyclone V",
   "defaults": {
     "N": 128,
     "DATA_WIDTH": 8,
@@ -15,11 +15,26 @@
     "TOP_ENTITY": "matrix_accelerator_full_top"
   },
   "sweep": [
-    { "tile_size": 2, "num_macs": 1 },
-    { "tile_size": 2, "num_macs": 2 },
-    { "tile_size": 4, "num_macs": 2 },
-    { "tile_size": 4, "num_macs": 4 },
-    { "tile_size": 8, "num_macs": 4 },
-    { "tile_size": 8, "num_macs": 8 }
+    { "tile_size": 2,  "num_macs": 1  },
+    { "tile_size": 2,  "num_macs": 2  },
+    { "tile_size": 2,  "num_macs": 4  },
+    { "tile_size": 2,  "num_macs": 8  },
+
+    { "tile_size": 4,  "num_macs": 4  },
+    { "tile_size": 4,  "num_macs": 8  },
+    { "tile_size": 4,  "num_macs": 16 },
+    { "tile_size": 4,  "num_macs": 32 },
+    { "tile_size": 4,  "num_macs": 64 },
+
+    { "tile_size": 8,  "num_macs": 8  },
+    { "tile_size": 8,  "num_macs": 16 },
+    { "tile_size": 8,  "num_macs": 32 },
+    { "tile_size": 8,  "num_macs": 48 },
+    { "tile_size": 8,  "num_macs": 64 },
+
+    { "tile_size": 16, "num_macs": 16 },
+    { "tile_size": 16, "num_macs": 32 },
+    { "tile_size": 16, "num_macs": 48 },
+    { "tile_size": 16, "num_macs": 64 }
   ]
 }

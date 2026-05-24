@@ -1,23 +1,22 @@
 {
   "experiment_name": "04_precision_sweep",
-  "description": "Sweep de precisao de dados",
+  "description": "Sweep opcional de precisao; nao usar para comparar diretamente com o sweep principal",
   "defaults": {
     "N": 128,
-    "tile_size": 4,
-    "num_macs": 4,
+    "tile_size": 8,
     "MEM_TYPE": "internal_fpga_ram",
     "DATAFLOW": "output_stationary",
     "BUFFERING_MODE": "single",
-    "MAC_PIPELINE_STAGES": 0,
-    "MEMORY_BANKS_A": 1,
-    "MEMORY_BANKS_B": 1,
+    "MAC_PIPELINE_STAGES": 1,
+    "MEMORY_BANKS_A": 4,
+    "MEMORY_BANKS_B": 4,
     "MEMORY_BURST_LEN": null,
-    "TOP_ENTITY": "matrix_accelerator_sdram_core_top"
+    "TOP_ENTITY": "matrix_accelerator_full_top"
   },
   "sweep": [
-    { "DATA_WIDTH": 8, "ACC_WIDTH": 32 },
-    { "DATA_WIDTH": 16, "ACC_WIDTH": 32 },
-    { "DATA_WIDTH": 16, "ACC_WIDTH": 48 },
-    { "DATA_WIDTH": 32, "ACC_WIDTH": 64 }
+    { "DATA_WIDTH": 8,  "ACC_WIDTH": 32, "num_macs": 32 },
+    { "DATA_WIDTH": 8,  "ACC_WIDTH": 32, "num_macs": 64 },
+    { "DATA_WIDTH": 16, "ACC_WIDTH": 40, "num_macs": 16 },
+    { "DATA_WIDTH": 16, "ACC_WIDTH": 40, "num_macs": 32 }
   ]
 }

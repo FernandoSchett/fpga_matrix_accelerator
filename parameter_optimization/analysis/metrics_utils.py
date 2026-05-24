@@ -1,66 +1,192 @@
 import csv
+import math
 from pathlib import Path
 
-def load_data(csv_path):
+
+RESOURCE_METRICS = [
+    "tile_size",
+    "num_macs",
+    "alms",
+    "alms_pct",
+    "aluts",
+    "registers",
+    "dsps",
+    "dsps_pct",
+    "block_memory_bits",
+    "block_memory_bits_pct",
+    "pins",
+    "pins_pct",
+    "max_fanout",
+    "avg_fanout",
+    "resource_pressure_pct",
+    "routing_pressure_score",
+]
+
+PERFORMANCE_METRICS = [
+    "fmax_mhz",
+    "exec_cycles",
+    "exec_time_us",
+    "gops_eff_exact",
+    "gops_eff_approx",
+    "gops_peak",
+    "peak_efficiency",
+    "performance_per_resource_score",
+]
+
+
+def to_float(value):
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool):
+        return float(value)
+    if isinstance(value, (int, float)):
+        if isinstance(value, float) and math.isnan(value):
+            return None
+        return float(value)
+    try:
+        return float(str(value).replace(",", "").replace("%", ""))
+    except ValueError:
+        return None
+
+
+def load_table(csv_path):
+    csv_path = Path(csv_path)
+    if not csv_path.exists():
+        raise SystemExit(f"CSV nao encontrado: {csv_path}")
+
     try:
         import pandas as pd
-        df = pd.read_csv(csv_path)
-        # return list of dicts to be consistent or just return df and flag
-        return df, True
     except ImportError:
-        print("Warning: pandas is not available. Falling back to csv.DictReader.")
-        with open(csv_path, 'r') as f:
-            reader = csv.DictReader(f)
-            data = []
+        rows = []
+        with csv_path.open(newline="", encoding="utf-8") as csv_file:
+            reader = csv.DictReader(csv_file)
             for row in reader:
-                # Convert numeric columns
-                parsed_row = {}
-                for k, v in row.items():
-                    try:
-                        if '.' in v:
-                            parsed_row[k] = float(v)
-                        else:
-                            parsed_row[k] = int(v)
-                    except ValueError:
-                        parsed_row[k] = v
-                data.append(parsed_row)
-        return data, False
+                parsed = {}
+                for key, value in row.items():
+                    numeric = to_float(value)
+                    parsed[key] = numeric if numeric is not None else value
+                rows.append(parsed)
+        return rows, False
 
-def calculate_correlations(df, is_pandas):
-    correlations = {}
-    metrics_x = ["tile_size", "num_macs", "alms", "alms_pct", "aluts", "registers", 
-                 "dsps", "dsps_pct", "block_memory_bits", "block_memory_bits_pct", 
-                 "pins", "pins_pct", "max_fanout", "avg_fanout", "resource_pressure_pct", "routing_pressure_score"]
-    metrics_y = ["fmax_mhz", "exec_cycles", "exec_time_us", "gops_eff_exact", "gops_eff_approx", "gops_peak", "peak_efficiency", "performance_per_resource_score"]
+    return pd.read_csv(csv_path), True
 
+
+def require_columns(data, is_pandas, columns):
     if is_pandas:
-        for x in metrics_x:
-            for y in metrics_y:
-                if x in df.columns and y in df.columns:
-                    try:
-                        corr = df[x].corr(df[y])
-                        correlations[f"{x}_vs_{y}"] = corr
-                    except:
-                        pass
+        missing = [column for column in columns if column not in data.columns]
     else:
-        # Fallback calculation
-        import math
-        def pearson(x_list, y_list):
-            n = len(x_list)
-            if n == 0: return 0
-            mean_x = sum(x_list)/n
-            mean_y = sum(y_list)/n
-            num = sum((xi - mean_x)*(yi - mean_y) for xi, yi in zip(x_list, y_list))
-            den = math.sqrt(sum((xi - mean_x)**2 for xi in x_list) * sum((yi - mean_y)**2 for yi in y_list))
-            return num / den if den != 0 else 0
-            
-        for x in metrics_x:
-            for y in metrics_y:
-                try:
-                    if len(df) > 0 and x in df[0] and y in df[0]:
-                        x_list = [row[x] for row in df if isinstance(row[x], (int, float))]
-                        y_list = [row[y] for row in df if isinstance(row[y], (int, float))]
-                        correlations[f"{x}_vs_{y}"] = pearson(x_list, y_list)
-                except:
-                    pass
-    return correlations
+        available = set(data[0].keys()) if data else set()
+        missing = [column for column in columns if column not in available]
+    if missing:
+        raise SystemExit("Colunas ausentes no CSV: " + ", ".join(missing))
+
+
+def column_values(data, is_pandas, column):
+    if is_pandas:
+        if column not in data.columns:
+            return []
+        values = data[column].tolist()
+    else:
+        values = [row.get(column) for row in data if column in row]
+    return [to_float(value) for value in values if to_float(value) is not None]
+
+
+def rows_as_dicts(data, is_pandas):
+    if is_pandas:
+        return data.to_dict(orient="records")
+    return list(data)
+
+
+def pearson(xs, ys):
+    if len(xs) != len(ys) or len(xs) < 2:
+        return None
+    mean_x = sum(xs) / len(xs)
+    mean_y = sum(ys) / len(ys)
+    numerator = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys))
+    denom_x = math.sqrt(sum((x - mean_x) ** 2 for x in xs))
+    denom_y = math.sqrt(sum((y - mean_y) ** 2 for y in ys))
+    denominator = denom_x * denom_y
+    if denominator == 0:
+        return None
+    return numerator / denominator
+
+
+def ranks(values):
+    indexed = sorted(enumerate(values), key=lambda item: item[1])
+    result = [0.0] * len(values)
+    idx = 0
+    while idx < len(indexed):
+        end_idx = idx
+        while end_idx + 1 < len(indexed) and indexed[end_idx + 1][1] == indexed[idx][1]:
+            end_idx += 1
+        rank = (idx + end_idx + 2) / 2.0
+        for ranked_idx in range(idx, end_idx + 1):
+            result[indexed[ranked_idx][0]] = rank
+        idx = end_idx + 1
+    return result
+
+
+def spearman(xs, ys):
+    if len(xs) != len(ys) or len(xs) < 2:
+        return None
+    return pearson(ranks(xs), ranks(ys))
+
+
+def linear_regression(xs, ys):
+    if len(xs) != len(ys) or len(xs) < 2:
+        return {"slope": None, "intercept": None, "r2": None}
+    mean_x = sum(xs) / len(xs)
+    mean_y = sum(ys) / len(ys)
+    ss_x = sum((x - mean_x) ** 2 for x in xs)
+    if ss_x == 0:
+        return {"slope": None, "intercept": None, "r2": None}
+    slope = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys)) / ss_x
+    intercept = mean_y - slope * mean_x
+    predictions = [slope * x + intercept for x in xs]
+    ss_tot = sum((y - mean_y) ** 2 for y in ys)
+    ss_res = sum((y - pred) ** 2 for y, pred in zip(ys, predictions))
+    r2 = 1.0 - (ss_res / ss_tot) if ss_tot else None
+    return {"slope": slope, "intercept": intercept, "r2": r2}
+
+
+def paired_numeric_values(data, is_pandas, left, right):
+    rows = rows_as_dicts(data, is_pandas)
+    xs = []
+    ys = []
+    for row in rows:
+        x_value = to_float(row.get(left))
+        y_value = to_float(row.get(right))
+        if x_value is not None and y_value is not None:
+            xs.append(x_value)
+            ys.append(y_value)
+    return xs, ys
+
+
+def calculate_associations(data, is_pandas, resource_metrics=None, performance_metrics=None):
+    resource_metrics = resource_metrics or RESOURCE_METRICS
+    performance_metrics = performance_metrics or PERFORMANCE_METRICS
+    associations = {}
+
+    for resource in resource_metrics:
+        for performance in performance_metrics:
+            xs, ys = paired_numeric_values(data, is_pandas, resource, performance)
+            if len(xs) < 2:
+                continue
+            associations[f"{resource}_vs_{performance}"] = {
+                "resource_metric": resource,
+                "performance_metric": performance,
+                "n": len(xs),
+                "pearson": pearson(xs, ys),
+                "spearman": spearman(xs, ys),
+                "linear_regression": linear_regression(xs, ys),
+                "interpretation": "associacao estatistica; nao implica causalidade",
+            }
+    return associations
+
+
+def top_associations(associations, limit=10):
+    def score(item):
+        value = item[1].get("pearson")
+        return abs(value) if value is not None else -1.0
+
+    return sorted(associations.items(), key=score, reverse=True)[:limit]

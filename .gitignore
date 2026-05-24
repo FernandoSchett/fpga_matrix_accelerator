@@ -23,6 +23,7 @@ modelsim/
 work/
 experiments/results/
 scripts/results/
+parameter_optimization/results/
 results/
 graficos_uteis/
 .venv/

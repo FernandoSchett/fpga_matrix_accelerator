@@ -2,39 +2,46 @@
 
 Acelerador VHDL para multiplicacao densa de matrizes inteiras na DE0-CV / Cyclone V `5CEBA4F23C7`.
 
-## About Curso
+## About
 
-Projeto academico para estudar desempenho, recursos e eficiencia de um acelerador `C = A x B` com `INT8` na entrada e acumulacao `INT32`.
+Projeto academico para estudar custo, desempenho e eficiencia de um acelerador `C = A x B` com entradas inteiras e acumulacao inteira.
 
+- Curso: `<coloque-o-nome-do-curso-aqui>`
 - Apresentacao Overleaf: `<coloque-o-link-aqui>`
 - Relatorio tecnico: `<coloque-o-link-aqui>`
 
-## Arquitetura Atual
+## Primeiro Passo
 
-O projeto foi limpo para manter somente o acelerador completo atual:
+Este repositorio usa submodulo para o host Python. Depois de clonar:
+
+```powershell
+git submodule update --init --recursive
+```
+
+## Arquitetura Atual
 
 - Top de sintese: `matrix_accelerator_full_top`
 - Core parametrizavel: `matrix_mult_tiled_core`
-- Parametros principais: `N`, `TILE_SIZE`, `NUM_MACS`, `DATA_WIDTH`, `ACC_WIDTH`
+- Generics conectados ao RTL: `N`, `TILE_SIZE`, `NUM_MACS`, `DATA_WIDTH`, `ACC_WIDTH`
 - Memoria: RAM interna inferida em M10K para A, B e C
-- Interface: UART simples para carregar A/B, iniciar, ler C/status/contadores
-- Indicacao visual: `LEDR[9:0]`
-
-Nao ha mais fluxo de SDRAM externa nem arquitetura 4x4 legada.
+- Interface: UART com FIFO `SCFIFO`
+- Debug: SignalTap HDL wrapper
+- Visual: `LEDR[9:0]` e `HEX5..HEX0` mostrando `SIGMAX` durante execucao
 
 ## Pastas
 
-- `rtl/common/`: pacotes, contadores de desempenho e LEDs de status.
-- `rtl/compute/`: unidade MAC e core de calculo tiled.
-- `rtl/memory/`: RAM interna inferivel para matrizes.
-- `rtl/control/`: interface de comandos UART para o acelerador.
-- `rtl/uart/`: RX/TX UART.
-- `rtl/top/`: top completo da placa.
-- `testes/`: testbenches e runner de simulacao.
-- `py_matrix_host/`: submodulo Python para gerar matrizes, host UART e validacao.
-- `scripts/`: experimentos, parsing de relatorios e coleta de CSV.
+- `rtl/common/`: pacotes, contadores, LEDs de status e display `SIGMAX`.
+- `rtl/compute/`: MAC, compute core e core tiled.
+- `rtl/memory/`: RAM interna inferivel.
+- `rtl/control/`: protocolo de comandos do acelerador.
+- `rtl/uart/`: UART RX/TX e FIFO UART.
+- `rtl/debug/`: wrapper SignalTap.
+- `rtl/top/`: top-level da placa.
+- `testes/`: testbenches e runner.
+- `py_matrix_host/`: submodulo Python para matriz/golden model/UART.
+- `parameter_optimization/`: varredura de parametros, coleta, analise e graficos.
 
-## Scripts Principais
+## Testes
 
 Rodar todos os testbenches:
 
@@ -42,30 +49,88 @@ Rodar todos os testbenches:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\run_testbenchs.ps1
 ```
 
-Rodar somente o testbench tiled:
+Rodar apenas um testbench:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\testes\scripts\run_tb_matrix_mult_tiled_core.ps1 -N 8 -TileSize 4 -NumMacs 4
+powershell -NoProfile -ExecutionPolicy Bypass -File .\run_testbenchs.ps1 -Only tb_matrix_mult_tiled_core
 ```
 
-Rodar todos os experimentos:
+Rodar com parametros:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\run_all_experiments.ps1
-```
-
-Gerar matrizes pelo host Python:
-
-```powershell
-python .\py_matrix_host\main.py generate --n 128 --data-width 8 --acc-width 32 --output-dir .\py_matrix_host\matrix
-```
-
-Rodar host em dry-run:
-
-```powershell
-python .\py_matrix_host\main.py uart --dry-run --input .\py_matrix_host\matrix\matrix_inputs.txt --expected .\py_matrix_host\matrix\matrix_expected.txt
+powershell -NoProfile -ExecutionPolicy Bypass -File .\run_testbenchs.ps1 -Only tb_matrix_mult_tiled_core -N 8 -TileSize 4 -NumMacs 4
 ```
 
 ## Quartus
 
-O arquivo `fpga_matrix_accelerator.qsf` aponta para `matrix_accelerator_full_top` e inclui apenas os RTLs usados pela arquitetura atual.
+Compilar o projeto principal:
+
+```powershell
+C:\altera_lite\25.1std\quartus\bin64\quartus_sh.exe --flow compile fpga_matrix_accelerator -c fpga_matrix_accelerator
+```
+
+O arquivo principal e `fpga_matrix_accelerator.qsf`. Os pinos de UART (`uart_rx_i`, `uart_tx_o`) precisam ser definidos conforme o conector/adaptador usado na placa.
+
+## Parameter Optimization
+
+Tudo do fluxo de experimentos fica em `parameter_optimization/`. Nada deve ser salvo em `results/` na raiz.
+
+Configuracoes:
+
+- `parameter_optimization/configs/01_compute_sweep.json`: varia `tile_size` e `num_macs`.
+- `parameter_optimization/configs/02_memory_sweep.json`: varia parametros de memoria como metadados.
+- `parameter_optimization/configs/03_timing_sweep.json`: varia pipeline/bancos como metadados.
+- `parameter_optimization/configs/04_precision_sweep.json`: varia `DATA_WIDTH` e `ACC_WIDTH`.
+
+Rodar uma fase:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\parameter_optimization\run_sdram_arch_experiments.ps1 -ConfigPath .\parameter_optimization\configs\01_compute_sweep.json
+```
+
+Rodar pelo atalho da raiz:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\run_all_experiments.ps1 -ConfigPath .\parameter_optimization\configs\01_compute_sweep.json
+```
+
+Coletar resultados manualmente:
+
+```powershell
+python .\parameter_optimization\collect_results.py --runs-dir .\parameter_optimization\results\01_compute_sweep\runs --output-csv .\parameter_optimization\results\01_compute_sweep\experiment_results.csv
+```
+
+Gerar analise e graficos:
+
+```powershell
+python .\parameter_optimization\analysis\run_analysis.py --experiment-dir .\parameter_optimization\results\01_compute_sweep
+```
+
+Saidas principais:
+
+- `parameter_optimization/results/<experiment_name>/experiment_results.csv`
+- `parameter_optimization/results/<experiment_name>/experiment_summary.json`
+- `parameter_optimization/results/<experiment_name>/resource_speed_analysis.json`
+- `parameter_optimization/results/<experiment_name>/analysis_report.md`
+- `parameter_optimization/results/<experiment_name>/plots/`
+
+## Parametros
+
+Conectados ao VHDL hoje:
+
+- `N`
+- `TILE_SIZE`
+- `NUM_MACS`
+- `DATA_WIDTH`
+- `ACC_WIDTH`
+
+Apenas metadados/configuracao por enquanto:
+
+- `MEM_TYPE`
+- `DATAFLOW`
+- `BUFFERING_MODE`
+- `MEMORY_BURST_LEN`
+- `MAC_PIPELINE_STAGES`
+- `MEMORY_BANKS_A`
+- `MEMORY_BANKS_B`
+

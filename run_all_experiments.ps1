@@ -1,12 +1,22 @@
 param(
+    [string]$ConfigPath = ".\parameter_optimization\configs\01_compute_sweep.json",
     [switch]$SkipSimulation,
-    [switch]$SkipQuartus
+    [switch]$SkipQuartus,
+    [switch]$SkipAnalysis,
+    [int]$RunLimit = 0
 )
 
 $ErrorActionPreference = "Stop"
 
-$args = @{}
-if ($SkipSimulation) { $args.SkipSimulation = $true }
-if ($SkipQuartus) { $args.SkipQuartus = $true }
+$experimentScript = Join-Path $PSScriptRoot "parameter_optimization\run_sdram_arch_experiments.ps1"
 
-& (Join-Path $PSScriptRoot "scripts\run_tiled_arch_experiments.ps1") @args
+$experimentParameters = @{
+    ConfigPath = $ConfigPath
+}
+
+if ($SkipSimulation) { $experimentParameters.SkipSimulation = $true }
+if ($SkipQuartus) { $experimentParameters.SkipQuartus = $true }
+if ($SkipAnalysis) { $experimentParameters.SkipAnalysis = $true }
+if ($RunLimit -gt 0) { $experimentParameters.RunLimit = $RunLimit }
+
+& $experimentScript @experimentParameters

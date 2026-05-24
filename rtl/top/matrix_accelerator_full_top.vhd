@@ -17,7 +17,8 @@ entity matrix_accelerator_full_top is
         SDRAM_DEPTH      : positive := 262144;
         READ_LATENCY     : natural  := 3;
         WRITE_LATENCY    : natural  := 2;
-        CLKS_PER_BIT     : positive := 434
+        CLKS_PER_BIT     : positive := 434;
+        CLK_FREQ_HZ      : positive := 50000000
     );
     port (
         clk : in std_logic;
@@ -28,7 +29,8 @@ entity matrix_accelerator_full_top is
 
         start_button : in std_logic;
         busy_led     : out std_logic;
-        done_led     : out std_logic
+        done_led     : out std_logic;
+        LEDR         : out std_logic_vector(9 downto 0)
     );
 end entity matrix_accelerator_full_top;
 
@@ -61,6 +63,11 @@ architecture rtl of matrix_accelerator_full_top is
     signal perf_store_cycles        : unsigned(63 downto 0);
     signal perf_num_tiles_processed : unsigned(63 downto 0);
     signal perf_num_mac_ops_issued  : unsigned(63 downto 0);
+
+    signal status_load_active    : std_logic;
+    signal status_compute_active : std_logic;
+    signal status_store_active   : std_logic;
+    signal status_tile_done      : std_logic;
 
 begin
 
@@ -158,7 +165,34 @@ begin
             perf_compute_cycles      => perf_compute_cycles,
             perf_store_cycles        => perf_store_cycles,
             perf_num_tiles_processed => perf_num_tiles_processed,
-            perf_num_mac_ops_issued  => perf_num_mac_ops_issued
+            perf_num_mac_ops_issued  => perf_num_mac_ops_issued,
+            load_active              => status_load_active,
+            compute_active           => status_compute_active,
+            store_active             => status_store_active,
+            tile_done                => status_tile_done
+        );
+
+    u_status_leds : entity work.accelerator_status_leds
+        generic map (
+            CLK_FREQ_HZ               => CLK_FREQ_HZ,
+            HEARTBEAT_HZ              => 1,
+            ACTIVITY_BLINK_HZ         => 4,
+            PULSE_STRETCH_CYCLES      => CLK_FREQ_HZ / 4,
+            USE_EXTERNAL_TILE_COUNTER => true
+        )
+        port map (
+            clk             => clk,
+            rst             => rst,
+            start           => accel_start,
+            busy            => accel_busy,
+            done            => accel_done,
+            load_active     => status_load_active,
+            compute_active  => status_compute_active,
+            store_active    => status_store_active,
+            tile_done       => status_tile_done,
+            error           => '0',
+            tiles_processed => perf_num_tiles_processed(31 downto 0),
+            leds            => LEDR
         );
 
     process(clk, rst)

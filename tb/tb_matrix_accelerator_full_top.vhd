@@ -35,11 +35,13 @@ architecture sim of tb_matrix_accelerator_full_top is
     signal uart_tx4_o : std_logic;
     signal busy4_led  : std_logic;
     signal done4_led  : std_logic;
+    signal ledr4      : std_logic_vector(9 downto 0);
 
     signal uart_rx8_i : std_logic := '1';
     signal uart_tx8_o : std_logic;
     signal busy8_led  : std_logic;
     signal done8_led  : std_logic;
+    signal ledr8      : std_logic_vector(9 downto 0);
 
     function a_value(
         constant row_idx : natural;
@@ -258,7 +260,8 @@ begin
             SDRAM_DEPTH      => SDRAM_DEPTH,
             READ_LATENCY     => 1,
             WRITE_LATENCY    => 1,
-            CLKS_PER_BIT     => CLKS_PER_BIT
+            CLKS_PER_BIT     => CLKS_PER_BIT,
+            CLK_FREQ_HZ      => 1000
         )
         port map (
             clk          => clk,
@@ -267,7 +270,8 @@ begin
             uart_tx_o    => uart_tx4_o,
             start_button => '0',
             busy_led     => busy4_led,
-            done_led     => done4_led
+            done_led     => done4_led,
+            LEDR         => ledr4
         );
 
     dut_n8 : entity work.matrix_accelerator_full_top
@@ -282,7 +286,8 @@ begin
             SDRAM_DEPTH      => SDRAM_DEPTH,
             READ_LATENCY     => 1,
             WRITE_LATENCY    => 1,
-            CLKS_PER_BIT     => CLKS_PER_BIT
+            CLKS_PER_BIT     => CLKS_PER_BIT,
+            CLK_FREQ_HZ      => 1000
         )
         port map (
             clk          => clk,
@@ -291,7 +296,8 @@ begin
             uart_tx_o    => uart_tx8_o,
             start_button => '0',
             busy_led     => busy8_led,
-            done_led     => done8_led
+            done_led     => done8_led,
+            LEDR         => ledr8
         );
 
     stim_proc : process

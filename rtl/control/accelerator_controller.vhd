@@ -46,7 +46,12 @@ entity accelerator_controller is
         perf_compute_cycles      : out unsigned(63 downto 0);
         perf_store_cycles        : out unsigned(63 downto 0);
         perf_num_tiles_processed : out unsigned(63 downto 0);
-        perf_num_mac_ops_issued  : out unsigned(63 downto 0)
+        perf_num_mac_ops_issued  : out unsigned(63 downto 0);
+
+        status_load_active    : out std_logic;
+        status_compute_active : out std_logic;
+        status_store_active   : out std_logic;
+        status_tile_done      : out std_logic
     );
 end entity accelerator_controller;
 
@@ -234,6 +239,11 @@ begin
     perf_tile_done <= store_done and not store_done_d;
     perf_mac_ops_issued_cycle <= to_unsigned(TILE_SIZE * TILE_SIZE * TILE_SIZE, 64) when core_start = '1' else
                                  (others => '0');
+
+    status_load_active    <= loader_busy;
+    status_compute_active <= perf_compute_active;
+    status_store_active   <= store_busy;
+    status_tile_done      <= perf_tile_done;
 
     a_buf_row     <= loader_a_row when loader_active = '1' else compute_local_row;
     a_buf_col     <= loader_a_col when loader_active = '1' else compute_local_col;

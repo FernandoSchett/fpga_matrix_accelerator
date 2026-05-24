@@ -144,7 +144,11 @@ begin
             perf_compute_cycles      => perf_compute_cycles,
             perf_store_cycles        => perf_store_cycles,
             perf_num_tiles_processed => perf_num_tiles_processed,
-            perf_num_mac_ops_issued  => perf_num_mac_ops_issued
+            perf_num_mac_ops_issued  => perf_num_mac_ops_issued,
+            status_load_active       => open,
+            status_compute_active    => open,
+            status_store_active      => open,
+            status_tile_done         => open
         );
 
     u_mem : entity work.sdram_model

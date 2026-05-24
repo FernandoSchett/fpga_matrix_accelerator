@@ -155,7 +155,11 @@ begin
             perf_compute_cycles      => open,
             perf_store_cycles        => open,
             perf_num_tiles_processed => open,
-            perf_num_mac_ops_issued  => open
+            perf_num_mac_ops_issued  => open,
+            load_active              => open,
+            compute_active           => open,
+            store_active             => open,
+            tile_done                => open
         );
 
     dut_n8 : entity work.matrix_accelerator_sdram_core_top
@@ -189,7 +193,11 @@ begin
             perf_compute_cycles      => open,
             perf_store_cycles        => open,
             perf_num_tiles_processed => open,
-            perf_num_mac_ops_issued  => open
+            perf_num_mac_ops_issued  => open,
+            load_active              => open,
+            compute_active           => open,
+            store_active             => open,
+            tile_done                => open
         );
 
     stim_proc : process

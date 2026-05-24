@@ -40,7 +40,12 @@ entity matrix_accelerator_sdram_core_top is
         perf_compute_cycles      : out unsigned(63 downto 0);
         perf_store_cycles        : out unsigned(63 downto 0);
         perf_num_tiles_processed : out unsigned(63 downto 0);
-        perf_num_mac_ops_issued  : out unsigned(63 downto 0)
+        perf_num_mac_ops_issued  : out unsigned(63 downto 0);
+
+        load_active    : out std_logic;
+        compute_active : out std_logic;
+        store_active   : out std_logic;
+        tile_done      : out std_logic
     );
 end entity matrix_accelerator_sdram_core_top;
 
@@ -165,7 +170,11 @@ begin
             perf_compute_cycles      => perf_compute_cycles,
             perf_store_cycles        => perf_store_cycles,
             perf_num_tiles_processed => perf_num_tiles_processed,
-            perf_num_mac_ops_issued  => perf_num_mac_ops_issued
+            perf_num_mac_ops_issued  => perf_num_mac_ops_issued,
+            status_load_active       => load_active,
+            status_compute_active    => compute_active,
+            status_store_active      => store_active,
+            status_tile_done         => tile_done
         );
 
     u_sdram : entity work.sdram_model

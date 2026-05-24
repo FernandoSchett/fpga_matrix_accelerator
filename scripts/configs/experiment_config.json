@@ -3,14 +3,14 @@
     "N": 128,
     "DATA_WIDTH": 8,
     "ACC_WIDTH": 32,
-    "MEM_TYPE": "external_sdram_with_internal_tile_buffers",
+    "MEM_TYPE": "internal_m10k_matrix_memory",
     "DATAFLOW": "output_stationary",
     "BUFFERING_MODE": "single",
     "MAC_PIPELINE_STAGES": null,
     "MEMORY_BANKS_A": 1,
     "MEMORY_BANKS_B": 1,
     "MEMORY_BURST_LEN": null,
-    "TOP_ENTITY": "matrix_accelerator_sdram_core_top"
+    "TOP_ENTITY": "matrix_mult_tiled_top"
   },
   "sweep": [
     { "tile_size": 2, "num_macs": 1 },

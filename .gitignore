@@ -22,6 +22,7 @@ simulation/
 modelsim/
 work/
 experiments/results/
+scripts/results/
 results/
 graficos_uteis/
 .venv/

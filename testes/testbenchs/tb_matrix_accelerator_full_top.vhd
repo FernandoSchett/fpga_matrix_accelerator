@@ -14,9 +14,6 @@ architecture sim of tb_matrix_accelerator_full_top is
     constant NUM_MACS         : positive := 2;
     constant DATA_WIDTH       : positive := 8;
     constant ACC_WIDTH        : positive := 32;
-    constant SDRAM_DATA_WIDTH : positive := 32;
-    constant SDRAM_ADDR_WIDTH : positive := 10;
-    constant SDRAM_DEPTH      : positive := 1024;
 
     constant N4 : positive := 4;
     constant N8 : positive := 8;
@@ -255,11 +252,6 @@ begin
             NUM_MACS         => NUM_MACS,
             DATA_WIDTH       => DATA_WIDTH,
             ACC_WIDTH        => ACC_WIDTH,
-            SDRAM_DATA_WIDTH => SDRAM_DATA_WIDTH,
-            SDRAM_ADDR_WIDTH => SDRAM_ADDR_WIDTH,
-            SDRAM_DEPTH      => SDRAM_DEPTH,
-            READ_LATENCY     => 1,
-            WRITE_LATENCY    => 1,
             CLKS_PER_BIT     => CLKS_PER_BIT,
             CLK_FREQ_HZ      => 1000
         )
@@ -281,11 +273,6 @@ begin
             NUM_MACS         => NUM_MACS,
             DATA_WIDTH       => DATA_WIDTH,
             ACC_WIDTH        => ACC_WIDTH,
-            SDRAM_DATA_WIDTH => SDRAM_DATA_WIDTH,
-            SDRAM_ADDR_WIDTH => SDRAM_ADDR_WIDTH,
-            SDRAM_DEPTH      => SDRAM_DEPTH,
-            READ_LATENCY     => 1,
-            WRITE_LATENCY    => 1,
             CLKS_PER_BIT     => CLKS_PER_BIT,
             CLK_FREQ_HZ      => 1000
         )

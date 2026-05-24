@@ -7,8 +7,8 @@ use work.matrix_accel_config_pkg.all;
 
 entity command_interface is
     generic (
-        ADDR_WIDTH        : positive := DEFAULT_SDRAM_ADDR_WIDTH;
-        DATA_WIDTH        : positive := DEFAULT_SDRAM_DATA_WIDTH;
+        ADDR_WIDTH        : positive := DEFAULT_ADDR_WIDTH;
+        DATA_WIDTH        : positive := DEFAULT_HOST_DATA_WIDTH;
         COUNTER_WIDTH     : positive := 64;
         HOST_READ_LATENCY : natural  := 3
     );

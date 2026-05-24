@@ -1,55 +1,71 @@
-# fpga_matrix_accelerator
+# FPGA Matrix Accelerator
 
-Acelerador VHDL para multiplicacao densa de matrizes inteiras no Quartus,
-mirando a placa DE0-CV / Cyclone V `5CEBA4F23C7`.
+Acelerador VHDL para multiplicacao densa de matrizes inteiras na DE0-CV / Cyclone V `5CEBA4F23C7`.
 
-## Arquiteturas
+## About Curso
 
-- `rtl/matriz_4x4/`: arquitetura 4x4 funcional, validada por testbench.
-- `rtl/matrix_tiled/`: arquitetura parametrizavel com RAM interna inferivel.
+Projeto academico para estudar desempenho, recursos e eficiencia de um acelerador `C = A x B` com `INT8` na entrada e acumulacao `INT32`.
 
-O top novo e `matrix_mult_tiled_top`, com generics:
+- Apresentacao Overleaf: `<coloque-o-link-aqui>`
+- Relatorio tecnico: `<coloque-o-link-aqui>`
 
-- `N`
-- `TILE_SIZE`
-- `NUM_MACS`
-- `DATA_WIDTH`
-- `ACC_WIDTH`
+## Arquitetura Atual
 
-A configuracao-alvo inicial e `N=128`, `DATA_WIDTH=8`, `ACC_WIDTH=32` e
-memoria interna para `RAM_A`, `RAM_B` e `RAM_C`.
+O projeto foi limpo para manter somente o acelerador completo atual:
 
-## Simulacao
+- Top de sintese: `matrix_accelerator_full_top`
+- Core parametrizavel: `matrix_mult_tiled_top`
+- Parametros principais: `N`, `TILE_SIZE`, `NUM_MACS`, `DATA_WIDTH`, `ACC_WIDTH`
+- Memoria: RAM interna inferida em M10K para A, B e C
+- Interface: UART simples para carregar A/B, iniciar, ler C/status/contadores
+- Indicacao visual: `LEDR[9:0]`
+
+Nao ha mais fluxo de SDRAM externa nem arquitetura 4x4 legada.
+
+## Pastas
+
+- `rtl/common/`: pacotes, contadores de desempenho e LEDs de status.
+- `rtl/compute/`: unidade MAC e core de calculo tiled.
+- `rtl/memory/`: RAM interna inferivel para matrizes.
+- `rtl/control/`: interface de comandos UART para o acelerador.
+- `rtl/uart/`: RX/TX UART e protocolo.
+- `rtl/top/`: top completo da placa e core tiled.
+- `testes/`: testbenches e runner de simulacao.
+- `py_matrix_host/`: submodulo Python para gerar matrizes, host UART e validacao.
+- `scripts/`: experimentos, parsing de relatorios e coleta de CSV.
+
+## Scripts Principais
 
 Rodar todos os testbenches:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\run_testbenchs.ps1 -SkipGenerate
+powershell -NoProfile -ExecutionPolicy Bypass -File .\run_testbenchs.ps1
 ```
 
-Rodar apenas o testbench parametrizavel:
+Rodar somente o testbench tiled:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\testes\run_tb_matrix_mult_tiled_top.ps1 -N 8 -TileSize 4 -NumMacs 4 -DataWidth 8 -AccWidth 32
+powershell -NoProfile -ExecutionPolicy Bypass -File .\testes\scripts\run_tb_matrix_mult_tiled_top.ps1 -N 8 -TileSize 4 -NumMacs 4
 ```
 
-O testbench tiled imprime:
-
-```text
-Ciclos de execucao: <valor>
-```
-
-## Experimentos
-
-O script abaixo gera uma revisao Quartus por configuracao, roda simulacao,
-extrai ciclos e gera um CSV de comparacao:
+Rodar todos os experimentos:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\experiments\run_tiled_arch_experiments.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\run_all_experiments.ps1
 ```
 
-Saida esperada:
+Gerar matrizes pelo host Python:
 
-```text
-experiments/results/matrix_tiled_experiments.csv
+```powershell
+python .\py_matrix_host\main.py generate --n 128 --data-width 8 --acc-width 32 --output-dir .\py_matrix_host\matrix
 ```
+
+Rodar host em dry-run:
+
+```powershell
+python .\py_matrix_host\main.py uart --dry-run --input .\py_matrix_host\matrix\matrix_inputs.txt --expected .\py_matrix_host\matrix\matrix_expected.txt
+```
+
+## Quartus
+
+O arquivo `fpga_matrix_accelerator.qsf` aponta para `matrix_accelerator_full_top` e inclui apenas os RTLs usados pela arquitetura atual.

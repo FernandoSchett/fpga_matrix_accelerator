@@ -226,7 +226,7 @@ end entity $EntityName;
 architecture rtl of $EntityName is
 begin
 
-    u_top : entity work.matrix_mult_tiled_top
+    u_core : entity work.matrix_mult_tiled_core
         generic map (
             N          => $N,
             TILE_SIZE  => $TileSize,
@@ -270,7 +270,7 @@ function New-ExperimentQsf {
     $macPath = ConvertTo-QsfPath (Join-Path $ProjectDir "rtl\compute\mac_unit.vhd")
     $ramPath = ConvertTo-QsfPath (Join-Path $ProjectDir "rtl\memory\matrix_single_port_ram.vhd")
     $corePath = ConvertTo-QsfPath (Join-Path $ProjectDir "rtl\compute\matrix_tiled_compute_core.vhd")
-    $topPath = ConvertTo-QsfPath (Join-Path $ProjectDir "rtl\top\matrix_mult_tiled_top.vhd")
+    $topPath = ConvertTo-QsfPath (Join-Path $ProjectDir "rtl\compute\matrix_mult_tiled_core.vhd")
     $wrapperQsfPath = ConvertTo-QsfPath $WrapperPath
     $outputQsfPath = $OutputDirectory.Replace("\", "/")
 
@@ -333,8 +333,8 @@ if (-not $SkipQuartus) {
 $rows = @()
 
 $tiledTestScriptCandidates = @(
-    Join-Path $ProjectDir "testes\scripts\run_tb_matrix_mult_tiled_top.ps1",
-    Join-Path $ProjectDir "testes\run_tb_matrix_mult_tiled_top.ps1"
+    Join-Path $ProjectDir "testes\scripts\run_tb_matrix_mult_tiled_core.ps1",
+    Join-Path $ProjectDir "testes\run_tb_matrix_mult_tiled_core.ps1"
 )
 
 $tiledTestScript = $null
@@ -347,7 +347,7 @@ foreach ($candidate in $tiledTestScriptCandidates) {
 }
 
 if (-not $SkipSimulation -and $null -eq $tiledTestScript) {
-    throw "Script de simulacao tiled nao encontrado em testes\scripts\run_tb_matrix_mult_tiled_top.ps1 nem em testes\run_tb_matrix_mult_tiled_top.ps1"
+    throw "Script de simulacao tiled nao encontrado em testes\scripts\run_tb_matrix_mult_tiled_core.ps1 nem em testes\run_tb_matrix_mult_tiled_core.ps1"
 }
 
 $baseOutputDir = $OutputDir
@@ -360,7 +360,7 @@ foreach ($config in $configs) {
     $runId = "N${N}_T${tileSize}_M${numMacs}"
     $runIdLower = $runId.ToLower()
 
-    $topEntity = "matrix_mult_tiled_top_$runIdLower"
+    $topEntity = "matrix_mult_tiled_core_$runIdLower"
     $runDir = Join-Path $baseOutputDir $runId
     $generatedDir = Join-Path $runDir "generated"
     $quartusOutDir = Join-Path $runDir "quartus_output"

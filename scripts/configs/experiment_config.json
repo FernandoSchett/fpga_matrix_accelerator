@@ -10,7 +10,7 @@
     "MEMORY_BANKS_A": 1,
     "MEMORY_BANKS_B": 1,
     "MEMORY_BURST_LEN": null,
-    "TOP_ENTITY": "matrix_mult_tiled_top"
+    "TOP_ENTITY": "matrix_mult_tiled_core"
   },
   "sweep": [
     { "tile_size": 2, "num_macs": 1 },

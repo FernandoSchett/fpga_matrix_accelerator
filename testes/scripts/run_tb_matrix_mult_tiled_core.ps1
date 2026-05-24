@@ -15,7 +15,7 @@ $TestsDir = Split-Path -Parent $ScriptDir
 $Runner = Join-Path $TestsDir "run_testbenchs.ps1"
 
 $args = @{
-    Only      = "tb_matrix_mult_tiled_top"
+    Only      = "tb_matrix_mult_tiled_core"
     N         = $N
     TileSize  = $TileSize
     NumMacs   = $NumMacs

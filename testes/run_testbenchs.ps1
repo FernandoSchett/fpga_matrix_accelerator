@@ -146,9 +146,26 @@ function Invoke-VhdlCompilation {
 }
 
 function Get-RtlSources {
-    return Get-ChildItem -Path "rtl" -Recurse -Filter "*.vhd" |
-        Sort-Object FullName |
-        ForEach-Object { Get-ProjectRelativePath -Path $_.FullName }
+    $ordered = @(
+        "rtl/common/matrix_tiled_pkg.vhd",
+        "rtl/common/matrix_accel_config_pkg.vhd",
+        "rtl/common/perf_counters.vhd",
+        "rtl/common/accelerator_status_leds.vhd",
+        "rtl/compute/mac_unit.vhd",
+        "rtl/compute/matrix_tiled_compute_core.vhd",
+        "rtl/memory/matrix_single_port_ram.vhd",
+        "rtl/compute/matrix_mult_tiled_core.vhd",
+        "rtl/control/command_interface.vhd",
+        "rtl/uart/uart_rx.vhd",
+        "rtl/uart/uart_tx.vhd",
+        "rtl/top/matrix_accelerator_full_top.vhd"
+    )
+
+    foreach ($source in $ordered) {
+        if (Test-Path -LiteralPath $source) {
+            $source
+        }
+    }
 }
 
 function Invoke-Testbench {
@@ -181,7 +198,7 @@ function Invoke-Testbench {
     Invoke-VhdlCompilation -Sources $sources -Vcom $vcom
 
     $genericArgs = @()
-    if ($Entity -eq "tb_matrix_mult_tiled_top") {
+    if ($Entity -eq "tb_matrix_mult_tiled_core") {
         if ($N -gt 0) { $genericArgs += "-gN=$N" }
         if ($TileSize -gt 0) { $genericArgs += "-gTILE_SIZE=$TileSize" }
         if ($NumMacs -gt 0) { $genericArgs += "-gNUM_MACS=$NumMacs" }
@@ -210,7 +227,7 @@ function Invoke-Testbench {
 }
 
 $tests = @(
-    "tb_matrix_mult_tiled_top",
+    "tb_matrix_mult_tiled_core",
     "tb_tile_compute_engine",
     "tb_perf_counters",
     "tb_command_interface",

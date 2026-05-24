@@ -57,6 +57,7 @@ architecture rtl of matrix_accelerator_full_top is
     signal host_data_out   : std_logic_vector(HOST_DATA_WIDTH-1 downto 0);
 
     signal accel_data_out : signed(ACC_WIDTH-1 downto 0);
+    signal core_result_addr : unsigned(ADDR_WIDTH-1 downto 0) := (others => '0');
 
     signal perf_total_cycles        : unsigned(63 downto 0);
     signal perf_load_cycles         : unsigned(63 downto 0);
@@ -150,7 +151,7 @@ begin
             perf_num_mac_ops_issued  => perf_num_mac_ops_issued
         );
 
-    u_core : entity work.matrix_mult_tiled_top
+    u_core : entity work.matrix_mult_tiled_core
         generic map (
             N          => N,
             TILE_SIZE  => TILE_SIZE,
@@ -168,7 +169,7 @@ begin
             start       => accel_start,
             busy        => accel_busy,
             done        => accel_done,
-            result_addr => host_rd_addr,
+            result_addr => core_result_addr,
             data_out    => accel_data_out
         );
 
@@ -221,7 +222,12 @@ begin
     begin
         if rst = '1' then
             done_seen <= '0';
+            core_result_addr <= (others => '0');
         elsif rising_edge(clk) then
+            if host_rd_en = '1' then
+                core_result_addr <= host_rd_addr;
+            end if;
+
             if accel_start = '1' then
                 done_seen <= '0';
             elsif accel_done = '1' then

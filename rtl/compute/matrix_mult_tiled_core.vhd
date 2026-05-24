@@ -5,7 +5,7 @@ use ieee.numeric_std.all;
 library work;
 use work.matrix_tiled_pkg.all;
 
-entity matrix_mult_tiled_top is
+entity matrix_mult_tiled_core is
     generic (
         N          : positive := 128;
         TILE_SIZE  : positive := 4;
@@ -29,9 +29,9 @@ entity matrix_mult_tiled_top is
         result_addr : in unsigned(clog2(N*N)-1 downto 0);
         data_out    : out signed(ACC_WIDTH-1 downto 0)
     );
-end entity matrix_mult_tiled_top;
+end entity matrix_mult_tiled_core;
 
-architecture rtl of matrix_mult_tiled_top is
+architecture rtl of matrix_mult_tiled_core is
 
     constant MATRIX_ELEMS : positive := N * N;
     constant ADDR_WIDTH   : positive := clog2(MATRIX_ELEMS);

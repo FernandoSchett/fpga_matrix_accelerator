@@ -14,7 +14,7 @@ Projeto academico para estudar desempenho, recursos e eficiencia de um acelerado
 O projeto foi limpo para manter somente o acelerador completo atual:
 
 - Top de sintese: `matrix_accelerator_full_top`
-- Core parametrizavel: `matrix_mult_tiled_top`
+- Core parametrizavel: `matrix_mult_tiled_core`
 - Parametros principais: `N`, `TILE_SIZE`, `NUM_MACS`, `DATA_WIDTH`, `ACC_WIDTH`
 - Memoria: RAM interna inferida em M10K para A, B e C
 - Interface: UART simples para carregar A/B, iniciar, ler C/status/contadores
@@ -28,8 +28,8 @@ Nao ha mais fluxo de SDRAM externa nem arquitetura 4x4 legada.
 - `rtl/compute/`: unidade MAC e core de calculo tiled.
 - `rtl/memory/`: RAM interna inferivel para matrizes.
 - `rtl/control/`: interface de comandos UART para o acelerador.
-- `rtl/uart/`: RX/TX UART e protocolo.
-- `rtl/top/`: top completo da placa e core tiled.
+- `rtl/uart/`: RX/TX UART.
+- `rtl/top/`: top completo da placa.
 - `testes/`: testbenches e runner de simulacao.
 - `py_matrix_host/`: submodulo Python para gerar matrizes, host UART e validacao.
 - `scripts/`: experimentos, parsing de relatorios e coleta de CSV.
@@ -45,7 +45,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\run_testbenchs.ps1
 Rodar somente o testbench tiled:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\testes\scripts\run_tb_matrix_mult_tiled_top.ps1 -N 8 -TileSize 4 -NumMacs 4
+powershell -NoProfile -ExecutionPolicy Bypass -File .\testes\scripts\run_tb_matrix_mult_tiled_core.ps1 -N 8 -TileSize 4 -NumMacs 4
 ```
 
 Rodar todos os experimentos:

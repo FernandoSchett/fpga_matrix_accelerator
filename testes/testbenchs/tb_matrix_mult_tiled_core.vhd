@@ -6,7 +6,7 @@ use std.env.all;
 library work;
 use work.matrix_tiled_pkg.all;
 
-entity tb_matrix_mult_tiled_top is
+entity tb_matrix_mult_tiled_core is
     generic (
         N          : positive := 4;
         TILE_SIZE  : positive := 2;
@@ -14,9 +14,9 @@ entity tb_matrix_mult_tiled_top is
         DATA_WIDTH : positive := 8;
         ACC_WIDTH  : positive := 32
     );
-end entity tb_matrix_mult_tiled_top;
+end entity tb_matrix_mult_tiled_core;
 
-architecture sim of tb_matrix_mult_tiled_top is
+architecture sim of tb_matrix_mult_tiled_core is
 
     constant CLK_PERIOD  : time := 10 ns;
     constant ADDR_WIDTH  : positive := clog2(N*N);
@@ -105,7 +105,7 @@ begin
 
     clk <= not clk after CLK_PERIOD / 2;
 
-    dut : entity work.matrix_mult_tiled_top
+    dut : entity work.matrix_mult_tiled_core
         generic map (
             N          => N,
             TILE_SIZE  => TILE_SIZE,

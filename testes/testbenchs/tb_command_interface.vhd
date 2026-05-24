@@ -29,6 +29,7 @@ architecture sim of tb_command_interface is
 
     signal rx_valid : std_logic := '0';
     signal rx_byte  : std_logic_vector(7 downto 0) := (others => '0');
+    signal rx_ready : std_logic;
     signal tx_busy  : std_logic := '0';
     signal tx_start : std_logic;
     signal tx_byte  : std_logic_vector(7 downto 0);
@@ -203,6 +204,7 @@ begin
             rst                      => rst,
             rx_valid                 => rx_valid,
             rx_byte                  => rx_byte,
+            rx_ready                 => rx_ready,
             tx_busy                  => tx_busy,
             tx_start                 => tx_start,
             tx_byte                  => tx_byte,

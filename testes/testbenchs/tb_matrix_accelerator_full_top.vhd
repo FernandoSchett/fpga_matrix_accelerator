@@ -15,9 +15,13 @@ architecture sim of tb_matrix_accelerator_full_top is
     signal uart_rx_i : std_logic := '1';
     signal uart_tx_o : std_logic;
     signal start_button : std_logic := '0';
-    signal busy_led : std_logic;
-    signal done_led : std_logic;
     signal ledr : std_logic_vector(9 downto 0);
+    signal HEX0 : std_logic_vector(6 downto 0);
+    signal HEX1 : std_logic_vector(6 downto 0);
+    signal HEX2 : std_logic_vector(6 downto 0);
+    signal HEX3 : std_logic_vector(6 downto 0);
+    signal HEX4 : std_logic_vector(6 downto 0);
+    signal HEX5 : std_logic_vector(6 downto 0);
 
     procedure wait_cycles(constant count : natural) is
     begin
@@ -38,7 +42,9 @@ begin
             DATA_WIDTH   => 8,
             ACC_WIDTH    => 32,
             CLKS_PER_BIT => CLKS_PER_BIT,
-            CLK_FREQ_HZ  => 1000
+            CLK_FREQ_HZ  => 1000,
+            UART_FIFO_DEPTH => 16,
+            ENABLE_SIGNALTAP => false
         )
         port map (
             clk          => clk,
@@ -46,9 +52,13 @@ begin
             uart_rx_i    => uart_rx_i,
             uart_tx_o    => uart_tx_o,
             start_button => start_button,
-            busy_led     => busy_led,
-            done_led     => done_led,
-            LEDR         => ledr
+            LEDR         => ledr,
+            HEX0         => HEX0,
+            HEX1         => HEX1,
+            HEX2         => HEX2,
+            HEX3         => HEX3,
+            HEX4         => HEX4,
+            HEX5         => HEX5
         );
 
     stim_proc : process
@@ -67,21 +77,23 @@ begin
         start_button <= '0';
 
         wait_cycles(2);
-        assert busy_led = '1'
-            report "busy_led deveria acender apos start_button."
+        assert HEX5 = "0010010" and HEX4 = "1111001" and HEX3 = "0000010" and
+               HEX2 = "0101011" and HEX1 = "0001000" and HEX0 = "0001001"
+            report "HEX deveria mostrar SIGMAX enquanto busy=1."
             severity failure;
 
         for cycle_idx in 0 to 2000 loop
             wait until rising_edge(clk);
-            exit when done_led = '1';
+            exit when ledr(8) = '1';
         end loop;
 
-        assert done_led = '1'
+        assert ledr(8) = '1'
             report "matrix_accelerator_full_top nao finalizou."
             severity failure;
 
-        assert ledr(8) = '1'
-            report "LEDR8 done_latched nao acendeu."
+        assert HEX0 = "1111111" and HEX1 = "1111111" and HEX2 = "1111111" and
+               HEX3 = "1111111" and HEX4 = "1111111" and HEX5 = "1111111"
+            report "HEX deveria apagar apos fim do experimento."
             severity failure;
 
         report "SIM_RESULT: PASS" severity note;

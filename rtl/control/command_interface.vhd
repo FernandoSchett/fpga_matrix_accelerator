@@ -18,6 +18,7 @@ entity command_interface is
 
         rx_valid : in std_logic;
         rx_byte  : in std_logic_vector(7 downto 0);
+        rx_ready : out std_logic;
 
         tx_busy  : in std_logic;
         tx_start : out std_logic;
@@ -120,6 +121,7 @@ begin
     host_rd_en      <= host_rd_en_reg;
     host_rd_addr    <= host_rd_addr_reg;
     start           <= start_reg;
+    rx_ready        <= '1' when state = IDLE or state = RECV_ADDR or state = RECV_DATA else '0';
 
     process(clk, rst)
         variable next_addr : std_logic_vector(31 downto 0);

@@ -151,6 +151,7 @@ function Get-RtlSources {
         "rtl/common/matrix_accel_config_pkg.vhd",
         "rtl/common/perf_counters.vhd",
         "rtl/common/accelerator_status_leds.vhd",
+        "rtl/common/sigma_hex_display.vhd",
         "rtl/compute/mac_unit.vhd",
         "rtl/compute/matrix_tiled_compute_core.vhd",
         "rtl/memory/matrix_single_port_ram.vhd",
@@ -158,6 +159,8 @@ function Get-RtlSources {
         "rtl/control/command_interface.vhd",
         "rtl/uart/uart_rx.vhd",
         "rtl/uart/uart_tx.vhd",
+        "rtl/uart/uart_byte_fifo.vhd",
+        "rtl/debug/signaltap_debug_core.vhd",
         "rtl/top/matrix_accelerator_full_top.vhd"
     )
 
@@ -192,6 +195,11 @@ function Invoke-Testbench {
 
     Invoke-Step -Command @($vlib, "work")
     Invoke-Step -Command @($vmap, "work", "work")
+
+    $alteraMfLib = "C:\altera_lite\25.1std\questa_fse\intel\vhdl\altera_mf"
+    if (Test-Path -LiteralPath $alteraMfLib) {
+        Invoke-Step -Command @($vmap, "altera_mf", $alteraMfLib)
+    }
 
     $sources = @(Get-RtlSources)
     $sources += Get-ProjectRelativePath -Path $tbPath
@@ -231,6 +239,8 @@ $tests = @(
     "tb_tile_compute_engine",
     "tb_perf_counters",
     "tb_command_interface",
+    "tb_uart_byte_fifo",
+    "tb_sigma_hex_display",
     "tb_accelerator_status_leds",
     "tb_matrix_accelerator_full_top"
 )

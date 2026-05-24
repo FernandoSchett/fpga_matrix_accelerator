@@ -14,7 +14,9 @@ entity matrix_accelerator_full_top is
         DATA_WIDTH    : positive := DEFAULT_DATA_WIDTH;
         ACC_WIDTH     : positive := DEFAULT_ACC_WIDTH;
         CLKS_PER_BIT  : positive := 434;
-        CLK_FREQ_HZ   : positive := 50000000
+        CLK_FREQ_HZ   : positive := 50000000;
+        UART_FIFO_DEPTH : positive := 64;
+        ENABLE_SIGNALTAP : boolean := true
     );
     port (
         clk : in std_logic;
@@ -24,9 +26,13 @@ entity matrix_accelerator_full_top is
         uart_tx_o : out std_logic;
 
         start_button : in std_logic;
-        busy_led     : out std_logic;
-        done_led     : out std_logic;
-        LEDR         : out std_logic_vector(9 downto 0)
+        LEDR         : out std_logic_vector(9 downto 0);
+        HEX0         : out std_logic_vector(6 downto 0);
+        HEX1         : out std_logic_vector(6 downto 0);
+        HEX2         : out std_logic_vector(6 downto 0);
+        HEX3         : out std_logic_vector(6 downto 0);
+        HEX4         : out std_logic_vector(6 downto 0);
+        HEX5         : out std_logic_vector(6 downto 0)
     );
 end entity matrix_accelerator_full_top;
 
@@ -35,12 +41,35 @@ architecture rtl of matrix_accelerator_full_top is
     constant ADDR_WIDTH      : positive := clog2(N * N);
     constant HOST_DATA_WIDTH : positive := DEFAULT_HOST_DATA_WIDTH;
 
-    signal rx_valid : std_logic;
-    signal rx_byte  : std_logic_vector(7 downto 0);
+    signal uart_rx_valid : std_logic;
+    signal uart_rx_byte  : std_logic_vector(7 downto 0);
 
-    signal tx_start : std_logic;
-    signal tx_byte  : std_logic_vector(7 downto 0);
-    signal tx_busy  : std_logic;
+    signal cmd_rx_valid : std_logic;
+    signal cmd_rx_ready : std_logic;
+    signal cmd_rx_byte  : std_logic_vector(7 downto 0);
+
+    signal rx_fifo_rd_en      : std_logic;
+    signal rx_fifo_empty      : std_logic;
+    signal rx_fifo_full       : std_logic;
+    signal rx_fifo_almost_full : std_logic;
+    signal rx_fifo_overflow   : std_logic;
+    signal rx_fifo_underflow  : std_logic;
+
+    signal cmd_tx_start : std_logic;
+    signal cmd_tx_byte  : std_logic_vector(7 downto 0);
+    signal cmd_tx_busy  : std_logic;
+
+    signal uart_tx_start : std_logic;
+    signal uart_tx_byte  : std_logic_vector(7 downto 0);
+    signal uart_tx_busy  : std_logic;
+
+    signal tx_fifo_rd_en      : std_logic;
+    signal tx_fifo_rd_data    : std_logic_vector(7 downto 0);
+    signal tx_fifo_empty      : std_logic;
+    signal tx_fifo_full       : std_logic;
+    signal tx_fifo_almost_full : std_logic;
+    signal tx_fifo_overflow   : std_logic;
+    signal tx_fifo_underflow  : std_logic;
 
     signal cmd_start   : std_logic;
     signal accel_start : std_logic;
@@ -72,14 +101,21 @@ architecture rtl of matrix_accelerator_full_top is
     signal status_store_active   : std_logic;
     signal status_tile_done      : std_logic;
 
+    signal debug_probe_data   : std_logic_vector(127 downto 0) := (others => '0');
+    signal debug_trigger_data : std_logic_vector(7 downto 0) := (others => '0');
+
+    attribute keep : boolean;
+    attribute preserve : boolean;
+    attribute keep of debug_probe_data : signal is true;
+    attribute keep of debug_trigger_data : signal is true;
+    attribute preserve of debug_probe_data : signal is true;
+    attribute preserve of debug_trigger_data : signal is true;
+
 begin
 
     assert N mod TILE_SIZE = 0
         report "matrix_accelerator_full_top exige N multiplo de TILE_SIZE."
         severity failure;
-
-    busy_led <= accel_busy;
-    done_led <= done_seen;
 
     accel_start <= start_button or cmd_start;
 
@@ -92,6 +128,13 @@ begin
     mac_ops_issued        <= to_unsigned(NUM_MACS, mac_ops_issued'length) when accel_busy = '1' else (others => '0');
 
     host_data_out <= std_logic_vector(resize(accel_data_out, HOST_DATA_WIDTH));
+    rx_fifo_rd_en <= cmd_rx_ready and not rx_fifo_empty;
+    cmd_rx_valid  <= rx_fifo_rd_en;
+    cmd_tx_busy   <= tx_fifo_almost_full or tx_fifo_full;
+
+    tx_fifo_rd_en <= '1' when uart_tx_busy = '0' and tx_fifo_empty = '0' else '0';
+    uart_tx_start <= tx_fifo_rd_en;
+    uart_tx_byte  <= tx_fifo_rd_data;
 
     u_uart_rx : entity work.uart_rx
         generic map (
@@ -101,8 +144,28 @@ begin
             clk       => clk,
             rst       => rst,
             rx_serial => uart_rx_i,
-            rx_valid  => rx_valid,
-            rx_byte   => rx_byte
+            rx_valid  => uart_rx_valid,
+            rx_byte   => uart_rx_byte
+        );
+
+    u_rx_fifo : entity work.uart_byte_fifo
+        generic map (
+            FIFO_DEPTH        => UART_FIFO_DEPTH,
+            ALMOST_FULL_LEVEL => UART_FIFO_DEPTH - 4,
+            RAM_BLOCK_TYPE    => "M10K"
+        )
+        port map (
+            clk         => clk,
+            rst         => rst,
+            wr_en       => uart_rx_valid,
+            wr_data     => uart_rx_byte,
+            rd_en       => rx_fifo_rd_en,
+            rd_data     => cmd_rx_byte,
+            empty       => rx_fifo_empty,
+            full        => rx_fifo_full,
+            almost_full => rx_fifo_almost_full,
+            overflow    => rx_fifo_overflow,
+            underflow   => rx_fifo_underflow
         );
 
     u_uart_tx : entity work.uart_tx
@@ -112,10 +175,30 @@ begin
         port map (
             clk       => clk,
             rst       => rst,
-            tx_start  => tx_start,
-            tx_byte   => tx_byte,
+            tx_start  => uart_tx_start,
+            tx_byte   => uart_tx_byte,
             tx_serial => uart_tx_o,
-            tx_busy   => tx_busy
+            tx_busy   => uart_tx_busy
+        );
+
+    u_tx_fifo : entity work.uart_byte_fifo
+        generic map (
+            FIFO_DEPTH        => UART_FIFO_DEPTH,
+            ALMOST_FULL_LEVEL => UART_FIFO_DEPTH - 4,
+            RAM_BLOCK_TYPE    => "M10K"
+        )
+        port map (
+            clk         => clk,
+            rst         => rst,
+            wr_en       => cmd_tx_start,
+            wr_data     => cmd_tx_byte,
+            rd_en       => tx_fifo_rd_en,
+            rd_data     => tx_fifo_rd_data,
+            empty       => tx_fifo_empty,
+            full        => tx_fifo_full,
+            almost_full => tx_fifo_almost_full,
+            overflow    => tx_fifo_overflow,
+            underflow   => tx_fifo_underflow
         );
 
     u_command : entity work.command_interface
@@ -128,11 +211,12 @@ begin
         port map (
             clk                      => clk,
             rst                      => rst,
-            rx_valid                 => rx_valid,
-            rx_byte                  => rx_byte,
-            tx_busy                  => tx_busy,
-            tx_start                 => tx_start,
-            tx_byte                  => tx_byte,
+            rx_valid                 => cmd_rx_valid,
+            rx_byte                  => cmd_rx_byte,
+            rx_ready                 => cmd_rx_ready,
+            tx_busy                  => cmd_tx_busy,
+            tx_start                 => cmd_tx_start,
+            tx_byte                  => cmd_tx_byte,
             accelerator_busy         => accel_busy,
             accelerator_done         => done_seen,
             host_wr_en               => host_wr_en,
@@ -213,10 +297,71 @@ begin
             compute_active  => status_compute_active,
             store_active    => status_store_active,
             tile_done       => status_tile_done,
-            error           => '0',
+            error           => rx_fifo_overflow or tx_fifo_overflow,
             tiles_processed => perf_num_tiles_processed(31 downto 0),
             leds            => LEDR
         );
+
+    u_sigma_hex : entity work.sigma_hex_display
+        port map (
+            running => accel_busy,
+            HEX0    => HEX0,
+            HEX1    => HEX1,
+            HEX2    => HEX2,
+            HEX3    => HEX3,
+            HEX4    => HEX4,
+            HEX5    => HEX5
+        );
+
+    debug_probe_data(0) <= accel_start;
+    debug_probe_data(1) <= accel_busy;
+    debug_probe_data(2) <= accel_done;
+    debug_probe_data(3) <= done_seen;
+    debug_probe_data(4) <= uart_rx_valid;
+    debug_probe_data(5) <= rx_fifo_full;
+    debug_probe_data(6) <= rx_fifo_almost_full;
+    debug_probe_data(7) <= rx_fifo_overflow;
+    debug_probe_data(8) <= cmd_rx_valid;
+    debug_probe_data(9) <= cmd_rx_ready;
+    debug_probe_data(10) <= cmd_tx_start;
+    debug_probe_data(11) <= tx_fifo_full;
+    debug_probe_data(12) <= tx_fifo_almost_full;
+    debug_probe_data(13) <= tx_fifo_overflow;
+    debug_probe_data(14) <= host_wr_en;
+    debug_probe_data(15) <= host_rd_en;
+    debug_probe_data(17 downto 16) <= host_matrix_sel;
+    debug_probe_data(31 downto 18) <= std_logic_vector(resize(host_addr, 14));
+    debug_probe_data(39 downto 32) <= cmd_rx_byte;
+    debug_probe_data(47 downto 40) <= cmd_tx_byte;
+    debug_probe_data(55 downto 48) <= tx_fifo_rd_data;
+    debug_probe_data(63 downto 56) <= uart_rx_byte;
+    debug_probe_data(95 downto 64) <= std_logic_vector(perf_total_cycles(31 downto 0));
+    debug_probe_data(127 downto 96) <= std_logic_vector(perf_num_tiles_processed(31 downto 0));
+
+    debug_trigger_data(0) <= accel_start;
+    debug_trigger_data(1) <= accel_busy;
+    debug_trigger_data(2) <= accel_done;
+    debug_trigger_data(3) <= uart_rx_valid;
+    debug_trigger_data(4) <= cmd_rx_valid;
+    debug_trigger_data(5) <= host_wr_en;
+    debug_trigger_data(6) <= host_rd_en;
+    debug_trigger_data(7) <= rx_fifo_overflow or tx_fifo_overflow;
+
+    gen_signaltap : if ENABLE_SIGNALTAP generate
+        u_signaltap : entity work.signaltap_debug_core
+            generic map (
+                DATA_BITS      => 128,
+                TRIGGER_BITS   => 8,
+                SAMPLE_DEPTH   => 512,
+                MEM_ADDR_BITS  => 9,
+                DATA_CNTR_BITS => 7
+            )
+            port map (
+                clk          => clk,
+                probe_data   => debug_probe_data,
+                trigger_data => debug_trigger_data
+            );
+    end generate;
 
     process(clk, rst)
     begin

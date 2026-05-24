@@ -14,6 +14,9 @@ entity matrix_accelerator_full_top is
         ACC_WIDTH        : positive := DEFAULT_ACC_WIDTH;
         SDRAM_DATA_WIDTH : positive := DEFAULT_SDRAM_DATA_WIDTH;
         SDRAM_ADDR_WIDTH : positive := DEFAULT_SDRAM_ADDR_WIDTH;
+        SDRAM_DEPTH      : positive := 262144;
+        READ_LATENCY     : natural  := 3;
+        WRITE_LATENCY    : natural  := 2;
         CLKS_PER_BIT     : positive := 434
     );
     port (
@@ -38,26 +41,33 @@ architecture rtl of matrix_accelerator_full_top is
     signal tx_byte  : std_logic_vector(7 downto 0);
     signal tx_busy  : std_logic;
 
-    signal protocol_start : std_logic;
-    signal accel_start    : std_logic;
-    signal accel_busy     : std_logic;
-    signal accel_done     : std_logic;
+    signal cmd_start   : std_logic;
+    signal accel_start : std_logic;
+    signal accel_busy  : std_logic;
+    signal accel_done  : std_logic;
+    signal done_seen   : std_logic := '0';
 
-    signal host_ready  : std_logic;
-    signal host_rvalid : std_logic;
-    signal host_rdata  : std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0);
+    signal host_wr_en      : std_logic;
+    signal host_matrix_sel : std_logic_vector(1 downto 0);
+    signal host_addr       : unsigned(SDRAM_ADDR_WIDTH-1 downto 0);
+    signal host_data_in    : std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0);
+    signal host_rd_en      : std_logic;
+    signal host_rd_addr    : unsigned(SDRAM_ADDR_WIDTH-1 downto 0);
+    signal host_data_out   : std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0);
 
-    signal perf_cycles       : unsigned(63 downto 0);
-    signal perf_sdram_reads  : unsigned(63 downto 0);
-    signal perf_sdram_writes : unsigned(63 downto 0);
-    signal perf_mac_groups   : unsigned(63 downto 0);
+    signal perf_total_cycles        : unsigned(63 downto 0);
+    signal perf_load_cycles         : unsigned(63 downto 0);
+    signal perf_compute_cycles      : unsigned(63 downto 0);
+    signal perf_store_cycles        : unsigned(63 downto 0);
+    signal perf_num_tiles_processed : unsigned(63 downto 0);
+    signal perf_num_mac_ops_issued  : unsigned(63 downto 0);
 
 begin
 
     busy_led <= accel_busy;
-    done_led <= accel_done;
+    done_led <= done_seen;
 
-    accel_start <= start_button or protocol_start;
+    accel_start <= start_button or cmd_start;
 
     u_uart_rx : entity work.uart_rx
         generic map (
@@ -84,18 +94,37 @@ begin
             tx_busy   => tx_busy
         );
 
-    u_uart_protocol : entity work.uart_protocol
+    u_command : entity work.command_interface
+        generic map (
+            ADDR_WIDTH        => SDRAM_ADDR_WIDTH,
+            DATA_WIDTH        => SDRAM_DATA_WIDTH,
+            COUNTER_WIDTH     => 64,
+            HOST_READ_LATENCY => READ_LATENCY + 2
+        )
         port map (
-            clk              => clk,
-            rst              => rst,
-            rx_valid         => rx_valid,
-            rx_byte          => rx_byte,
-            tx_busy          => tx_busy,
-            tx_start         => tx_start,
-            tx_byte          => tx_byte,
-            accelerator_busy => accel_busy,
-            accelerator_done => accel_done,
-            start_pulse      => protocol_start
+            clk                      => clk,
+            rst                      => rst,
+            rx_valid                 => rx_valid,
+            rx_byte                  => rx_byte,
+            tx_busy                  => tx_busy,
+            tx_start                 => tx_start,
+            tx_byte                  => tx_byte,
+            accelerator_busy         => accel_busy,
+            accelerator_done         => done_seen,
+            host_wr_en               => host_wr_en,
+            host_matrix_sel          => host_matrix_sel,
+            host_addr                => host_addr,
+            host_data_in             => host_data_in,
+            host_rd_en               => host_rd_en,
+            host_rd_addr             => host_rd_addr,
+            host_data_out            => host_data_out,
+            start                    => cmd_start,
+            perf_total_cycles        => perf_total_cycles,
+            perf_load_cycles         => perf_load_cycles,
+            perf_compute_cycles      => perf_compute_cycles,
+            perf_store_cycles        => perf_store_cycles,
+            perf_num_tiles_processed => perf_num_tiles_processed,
+            perf_num_mac_ops_issued  => perf_num_mac_ops_issued
         );
 
     u_core : entity work.matrix_accelerator_sdram_core_top
@@ -107,26 +136,42 @@ begin
             ACC_WIDTH        => ACC_WIDTH,
             SDRAM_DATA_WIDTH => SDRAM_DATA_WIDTH,
             SDRAM_ADDR_WIDTH => SDRAM_ADDR_WIDTH,
-            USE_SIM_SDRAM    => true
+            SDRAM_DEPTH      => SDRAM_DEPTH,
+            READ_LATENCY     => READ_LATENCY,
+            WRITE_LATENCY    => WRITE_LATENCY
         )
         port map (
-            clk               => clk,
-            rst               => rst,
-            host_req          => '0',
-            host_we           => '0',
-            host_addr         => (others => '0'),
-            host_wdata        => (others => '0'),
-            host_byte_en      => (others => '1'),
-            host_ready        => host_ready,
-            host_rvalid       => host_rvalid,
-            host_rdata        => host_rdata,
-            start             => accel_start,
-            busy              => accel_busy,
-            done              => accel_done,
-            perf_cycles       => perf_cycles,
-            perf_sdram_reads  => perf_sdram_reads,
-            perf_sdram_writes => perf_sdram_writes,
-            perf_mac_groups   => perf_mac_groups
+            clk                      => clk,
+            rst                      => rst,
+            host_wr_en               => host_wr_en,
+            host_matrix_sel          => host_matrix_sel,
+            host_addr                => host_addr,
+            host_data_in             => host_data_in,
+            host_rd_en               => host_rd_en,
+            host_rd_addr             => host_rd_addr,
+            host_data_out            => host_data_out,
+            start                    => accel_start,
+            busy                     => accel_busy,
+            done                     => accel_done,
+            perf_total_cycles        => perf_total_cycles,
+            perf_load_cycles         => perf_load_cycles,
+            perf_compute_cycles      => perf_compute_cycles,
+            perf_store_cycles        => perf_store_cycles,
+            perf_num_tiles_processed => perf_num_tiles_processed,
+            perf_num_mac_ops_issued  => perf_num_mac_ops_issued
         );
+
+    process(clk, rst)
+    begin
+        if rst = '1' then
+            done_seen <= '0';
+        elsif rising_edge(clk) then
+            if accel_start = '1' then
+                done_seen <= '0';
+            elsif accel_done = '1' then
+                done_seen <= '1';
+            end if;
+        end if;
+    end process;
 
 end architecture rtl;

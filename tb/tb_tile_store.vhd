@@ -3,57 +3,89 @@ use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 use std.env.all;
 
+library work;
+use work.matrix_tiled_pkg.all;
+
 entity tb_tile_store is
 end entity tb_tile_store;
 
 architecture sim of tb_tile_store is
 
     constant CLK_PERIOD       : time := 10 ns;
+    constant N                : positive := 4;
     constant TILE_SIZE        : positive := 2;
-    constant ELEMENT_WIDTH    : positive := 32;
+    constant ACC_WIDTH        : positive := 32;
     constant SDRAM_DATA_WIDTH : positive := 32;
     constant SDRAM_ADDR_WIDTH : positive := 8;
-    constant TILE_ADDR_WIDTH  : positive := 3;
+    constant TILE_IDX_WIDTH   : positive := clog2((N / TILE_SIZE) + 1);
 
     signal clk : std_logic := '0';
     signal rst : std_logic := '0';
 
-    signal store_start : std_logic := '0';
-    signal store_busy  : std_logic;
-    signal store_done  : std_logic;
+    signal store_start  : std_logic := '0';
+    signal store_tile_i : unsigned(TILE_IDX_WIDTH-1 downto 0) := (others => '0');
+    signal store_tile_j : unsigned(TILE_IDX_WIDTH-1 downto 0) := (others => '0');
+    signal store_busy   : std_logic;
+    signal store_done   : std_logic;
 
-    signal store_req     : std_logic;
-    signal store_we      : std_logic;
-    signal store_addr    : unsigned(SDRAM_ADDR_WIDTH-1 downto 0);
-    signal store_wdata   : std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0);
-    signal store_byte_en : std_logic_vector((SDRAM_DATA_WIDTH/8)-1 downto 0);
-    signal store_ready   : std_logic;
+    signal store_wr_req   : std_logic;
+    signal store_wr_addr  : unsigned(SDRAM_ADDR_WIDTH-1 downto 0);
+    signal store_wr_data  : std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0);
+    signal store_wr_ready : std_logic;
+    signal store_sdram_busy : std_logic;
 
-    signal host_req   : std_logic := '0';
-    signal host_we    : std_logic := '0';
-    signal host_addr  : unsigned(SDRAM_ADDR_WIDTH-1 downto 0) := (others => '0');
-    signal host_wdata : std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0) := (others => '0');
-    signal host_rdata : std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0);
-    signal host_rvalid : std_logic;
+    signal host_rd_req   : std_logic := '0';
+    signal host_rd_addr  : unsigned(SDRAM_ADDR_WIDTH-1 downto 0) := (others => '0');
+    signal host_rd_data  : std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0);
+    signal host_rd_valid : std_logic;
 
-    signal mem_req     : std_logic;
-    signal mem_we      : std_logic;
-    signal mem_addr    : unsigned(SDRAM_ADDR_WIDTH-1 downto 0);
-    signal mem_wdata   : std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0);
-    signal mem_byte_en : std_logic_vector((SDRAM_DATA_WIDTH/8)-1 downto 0);
-    signal mem_ready   : std_logic;
-    signal mem_rvalid  : std_logic;
-    signal mem_rdata   : std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0);
+    signal mem_rd_req   : std_logic;
+    signal mem_rd_addr  : unsigned(SDRAM_ADDR_WIDTH-1 downto 0);
+    signal mem_rd_data  : std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0);
+    signal mem_rd_valid : std_logic;
+    signal mem_rd_ready : std_logic;
+    signal mem_wr_req   : std_logic;
+    signal mem_wr_addr  : unsigned(SDRAM_ADDR_WIDTH-1 downto 0);
+    signal mem_wr_data  : std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0);
+    signal mem_wr_ready : std_logic;
+    signal mem_busy     : std_logic;
 
-    signal store_tile_addr : unsigned(TILE_ADDR_WIDTH-1 downto 0);
-    signal tile_rd_data    : signed(ELEMENT_WIDTH-1 downto 0);
+    signal tile_buf_wr_en   : std_logic := '0';
+    signal tile_buf_row     : unsigned(clog2(TILE_SIZE)-1 downto 0) := (others => '0');
+    signal tile_buf_col     : unsigned(clog2(TILE_SIZE)-1 downto 0) := (others => '0');
+    signal tile_buf_wr_data : signed(ACC_WIDTH-1 downto 0) := (others => '0');
+    signal tile_buf_rd_data : signed(ACC_WIDTH-1 downto 0);
+    signal tile_buf_addr_dbg : unsigned(clog2(TILE_SIZE*TILE_SIZE)-1 downto 0);
 
-    signal tb_tile_wr_en   : std_logic := '0';
-    signal tb_tile_addr    : unsigned(TILE_ADDR_WIDTH-1 downto 0) := (others => '0');
-    signal tb_tile_wr_data : signed(ELEMENT_WIDTH-1 downto 0) := (others => '0');
-    signal buf_addr        : unsigned(TILE_ADDR_WIDTH-1 downto 0);
+    signal store_buf_row : unsigned(clog2(TILE_SIZE)-1 downto 0);
+    signal store_buf_col : unsigned(clog2(TILE_SIZE)-1 downto 0);
+
+    signal tb_buf_row : unsigned(clog2(TILE_SIZE)-1 downto 0) := (others => '0');
+    signal tb_buf_col : unsigned(clog2(TILE_SIZE)-1 downto 0) := (others => '0');
 
     signal store_active : std_logic;
+
+    function tile_value(
+        constant local_row : natural;
+        constant local_col : natural
+    ) return natural is
+    begin
+        return 1000 + (local_row * 10) + local_col;
+    end function;
+
+    function c_addr(
+        constant tile_i    : natural;
+        constant tile_j    : natural;
+        constant local_row : natural;
+        constant local_col : natural
+    ) return natural is
+        variable global_row : natural;
+        variable global_col : natural;
+    begin
+        global_row := (tile_i * TILE_SIZE) + local_row;
+        global_col := (tile_j * TILE_SIZE) + local_col;
+        return (global_row * N) + global_col;
+    end function;
 
 begin
 
@@ -61,74 +93,87 @@ begin
 
     store_active <= store_busy or store_start;
 
-    mem_req     <= store_req when store_active = '1' else host_req;
-    mem_we      <= store_we when store_active = '1' else host_we;
-    mem_addr    <= store_addr when store_active = '1' else host_addr;
-    mem_wdata   <= store_wdata when store_active = '1' else host_wdata;
-    mem_byte_en <= store_byte_en when store_active = '1' else (others => '1');
+    mem_rd_req  <= '0' when store_active = '1' else host_rd_req;
+    mem_rd_addr <= (others => '0') when store_active = '1' else host_rd_addr;
+    mem_wr_req  <= store_wr_req when store_active = '1' else '0';
+    mem_wr_addr <= store_wr_addr when store_active = '1' else (others => '0');
+    mem_wr_data <= store_wr_data when store_active = '1' else (others => '0');
 
-    store_ready <= mem_ready when store_active = '1' else '0';
-    host_rdata  <= mem_rdata;
-    host_rvalid <= mem_rvalid when store_active = '0' else '0';
+    store_wr_ready   <= mem_wr_ready when store_active = '1' else '0';
+    store_sdram_busy <= mem_busy;
+    host_rd_data     <= mem_rd_data;
+    host_rd_valid    <= mem_rd_valid when store_active = '0' else '0';
 
-    buf_addr <= store_tile_addr when store_active = '1' else tb_tile_addr;
+    tile_buf_row <= store_buf_row when store_active = '1' else tb_buf_row;
+    tile_buf_col <= store_buf_col when store_active = '1' else tb_buf_col;
 
     u_mem : entity work.sdram_model
         generic map (
-            DATA_WIDTH => SDRAM_DATA_WIDTH,
-            ADDR_WIDTH => SDRAM_ADDR_WIDTH,
-            DEPTH      => 256
+            DATA_WIDTH    => SDRAM_DATA_WIDTH,
+            ADDR_WIDTH    => SDRAM_ADDR_WIDTH,
+            READ_LATENCY  => 1,
+            WRITE_LATENCY => 1,
+            DEPTH         => 256
         )
         port map (
-            clk     => clk,
-            rst     => rst,
-            req     => mem_req,
-            we      => mem_we,
-            addr    => mem_addr,
-            wdata   => mem_wdata,
-            byte_en => mem_byte_en,
-            ready   => mem_ready,
-            rvalid  => mem_rvalid,
-            rdata   => mem_rdata
+            clk      => clk,
+            rst      => rst,
+            rd_req   => mem_rd_req,
+            rd_addr  => mem_rd_addr,
+            rd_data  => mem_rd_data,
+            rd_valid => mem_rd_valid,
+            rd_ready => mem_rd_ready,
+            wr_req   => mem_wr_req,
+            wr_addr  => mem_wr_addr,
+            wr_data  => mem_wr_data,
+            wr_ready => mem_wr_ready,
+            busy     => mem_busy
         );
 
     u_buffer : entity work.tile_buffer_m10k
         generic map (
-            ELEMENT_WIDTH => ELEMENT_WIDTH,
-            ADDR_WIDTH    => TILE_ADDR_WIDTH,
-            DEPTH         => 8
+            TILE_SIZE     => TILE_SIZE,
+            DATA_WIDTH    => 8,
+            ACC_WIDTH     => ACC_WIDTH,
+            USE_M10K      => true,
+            IS_ACC_BUFFER => true,
+            BUFFER_IMPL   => "INFERRED"
         )
         port map (
-            clk     => clk,
-            wr_en   => tb_tile_wr_en,
-            addr    => buf_addr,
-            wr_data => tb_tile_wr_data,
-            rd_data => tile_rd_data
+            clk            => clk,
+            rst            => rst,
+            wr_en          => tile_buf_wr_en,
+            local_row      => tile_buf_row,
+            local_col      => tile_buf_col,
+            wr_data        => tile_buf_wr_data,
+            rd_data        => tile_buf_rd_data,
+            local_addr_dbg => tile_buf_addr_dbg
         );
 
     u_store : entity work.tile_store
         generic map (
+            N                => N,
             TILE_SIZE        => TILE_SIZE,
-            ELEMENT_WIDTH    => ELEMENT_WIDTH,
+            ACC_WIDTH        => ACC_WIDTH,
             SDRAM_DATA_WIDTH => SDRAM_DATA_WIDTH,
             SDRAM_ADDR_WIDTH => SDRAM_ADDR_WIDTH
         )
         port map (
-            clk           => clk,
-            rst           => rst,
-            start         => store_start,
-            base_addr     => to_unsigned(20, SDRAM_ADDR_WIDTH),
-            row_stride    => to_unsigned(4, SDRAM_ADDR_WIDTH),
-            busy          => store_busy,
-            done          => store_done,
-            sdram_req     => store_req,
-            sdram_we      => store_we,
-            sdram_addr    => store_addr,
-            sdram_wdata   => store_wdata,
-            sdram_byte_en => store_byte_en,
-            sdram_ready   => store_ready,
-            tile_rd_addr  => store_tile_addr,
-            tile_rd_data  => tile_rd_data
+            clk              => clk,
+            rst              => rst,
+            start            => store_start,
+            tile_i           => store_tile_i,
+            tile_j           => store_tile_j,
+            busy             => store_busy,
+            done             => store_done,
+            sdram_wr_req     => store_wr_req,
+            sdram_wr_addr    => store_wr_addr,
+            sdram_wr_data    => store_wr_data,
+            sdram_wr_ready   => store_wr_ready,
+            sdram_busy       => store_sdram_busy,
+            tile_c_local_row => store_buf_row,
+            tile_c_local_col => store_buf_col,
+            tile_c_rd_data   => tile_buf_rd_data
         );
 
     stim_proc : process
@@ -140,20 +185,29 @@ begin
         rst <= '0';
         wait until rising_edge(clk);
 
-        for idx in 0 to 3 loop
-            tb_tile_addr    <= to_unsigned(idx, TILE_ADDR_WIDTH);
-            tb_tile_wr_data <= to_signed(100 + idx, ELEMENT_WIDTH);
-            tb_tile_wr_en   <= '1';
-            wait until rising_edge(clk);
-            tb_tile_wr_en <= '0';
-            wait until rising_edge(clk);
+        for row_idx in 0 to TILE_SIZE-1 loop
+            for col_idx in 0 to TILE_SIZE-1 loop
+                tb_buf_row       <= to_unsigned(row_idx, tb_buf_row'length);
+                tb_buf_col       <= to_unsigned(col_idx, tb_buf_col'length);
+                tile_buf_wr_data <= to_signed(tile_value(row_idx, col_idx), ACC_WIDTH);
+                tile_buf_wr_en   <= '1';
+                wait until rising_edge(clk);
+                tile_buf_wr_en <= '0';
+                wait until rising_edge(clk);
+
+                assert to_integer(tile_buf_addr_dbg) = (row_idx * TILE_SIZE) + col_idx
+                    report "Endereco local do tile_C incorreto no preload."
+                    severity failure;
+            end loop;
         end loop;
 
-        store_start <= '1';
+        store_tile_i <= to_unsigned(1, store_tile_i'length);
+        store_tile_j <= to_unsigned(1, store_tile_j'length);
+        store_start  <= '1';
         wait until rising_edge(clk);
         store_start <= '0';
 
-        for cycle_idx in 0 to 100 loop
+        for cycle_idx in 0 to 200 loop
             wait until rising_edge(clk);
             exit when store_done = '1';
         end loop;
@@ -162,25 +216,32 @@ begin
             report "tile_store nao finalizou."
             severity failure;
 
-        for idx in 0 to 3 loop
-            if idx < 2 then
-                expected_addr := 20 + idx;
-            else
-                expected_addr := 20 + 4 + (idx - 2);
-            end if;
+        wait until rising_edge(clk);
 
-            expected_val := 100 + idx;
+        for row_idx in 0 to TILE_SIZE-1 loop
+            for col_idx in 0 to TILE_SIZE-1 loop
+                expected_addr := c_addr(1, 1, row_idx, col_idx);
+                expected_val  := tile_value(row_idx, col_idx);
 
-            host_addr <= to_unsigned(expected_addr, SDRAM_ADDR_WIDTH);
-            host_we   <= '0';
-            host_req  <= '1';
-            wait until rising_edge(clk);
-            host_req <= '0';
-            wait for 1 ns;
+                host_rd_addr <= to_unsigned(expected_addr, SDRAM_ADDR_WIDTH);
+                host_rd_req  <= '1';
+                wait until rising_edge(clk);
+                host_rd_req <= '0';
 
-            assert host_rvalid = '1' and host_rdata = std_logic_vector(to_signed(expected_val, SDRAM_DATA_WIDTH))
-                report "tile_store gravou valor incorreto na SDRAM."
-                severity failure;
+                for cycle_idx in 0 to 20 loop
+                    wait until rising_edge(clk);
+                    wait for 1 ns;
+                    exit when host_rd_valid = '1';
+                end loop;
+
+                assert host_rd_valid = '1'
+                    report "Leitura da SDRAM nao retornou rd_valid."
+                    severity failure;
+
+                assert host_rd_data = std_logic_vector(to_signed(expected_val, SDRAM_DATA_WIDTH))
+                    report "tile_store gravou valor incorreto na SDRAM."
+                    severity failure;
+            end loop;
         end loop;
 
         report "SIM_RESULT: PASS" severity note;

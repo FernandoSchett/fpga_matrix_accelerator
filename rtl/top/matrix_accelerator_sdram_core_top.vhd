@@ -15,60 +15,77 @@ entity matrix_accelerator_sdram_core_top is
         SDRAM_DATA_WIDTH : positive := DEFAULT_SDRAM_DATA_WIDTH;
         SDRAM_ADDR_WIDTH : positive := DEFAULT_SDRAM_ADDR_WIDTH;
         SDRAM_DEPTH      : positive := 262144;
-        USE_SIM_SDRAM    : boolean := true
+        READ_LATENCY     : natural  := 3;
+        WRITE_LATENCY    : natural  := 2
     );
     port (
         clk : in std_logic;
         rst : in std_logic;
 
-        host_req     : in std_logic;
-        host_we      : in std_logic;
-        host_addr    : in unsigned(SDRAM_ADDR_WIDTH-1 downto 0);
-        host_wdata   : in std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0);
-        host_byte_en : in std_logic_vector((SDRAM_DATA_WIDTH/8)-1 downto 0);
-        host_ready   : out std_logic;
-        host_rvalid  : out std_logic;
-        host_rdata   : out std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0);
+        host_wr_en     : in std_logic;
+        host_matrix_sel : in std_logic_vector(1 downto 0);
+        host_addr      : in unsigned(SDRAM_ADDR_WIDTH-1 downto 0);
+        host_data_in   : in std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0);
+
+        host_rd_en     : in std_logic;
+        host_rd_addr   : in unsigned(SDRAM_ADDR_WIDTH-1 downto 0);
+        host_data_out  : out std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0);
 
         start : in std_logic;
         busy  : out std_logic;
         done  : out std_logic;
 
-        perf_cycles       : out unsigned(63 downto 0);
-        perf_sdram_reads  : out unsigned(63 downto 0);
-        perf_sdram_writes : out unsigned(63 downto 0);
-        perf_mac_groups   : out unsigned(63 downto 0)
+        perf_total_cycles        : out unsigned(63 downto 0);
+        perf_load_cycles         : out unsigned(63 downto 0);
+        perf_compute_cycles      : out unsigned(63 downto 0);
+        perf_store_cycles        : out unsigned(63 downto 0);
+        perf_num_tiles_processed : out unsigned(63 downto 0);
+        perf_num_mac_ops_issued  : out unsigned(63 downto 0)
     );
 end entity matrix_accelerator_sdram_core_top;
 
 architecture rtl of matrix_accelerator_sdram_core_top is
 
-    signal ctrl_req     : std_logic;
-    signal ctrl_we      : std_logic;
-    signal ctrl_addr    : unsigned(SDRAM_ADDR_WIDTH-1 downto 0);
-    signal ctrl_wdata   : std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0);
-    signal ctrl_byte_en : std_logic_vector((SDRAM_DATA_WIDTH/8)-1 downto 0);
-    signal ctrl_ready   : std_logic;
-    signal ctrl_rvalid  : std_logic;
-    signal ctrl_rdata   : std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0);
+    constant MATRIX_ELEMS : natural := N * N;
+    constant BASE_A       : natural := 0;
+    constant BASE_B       : natural := MATRIX_ELEMS;
+    constant BASE_C       : natural := MATRIX_ELEMS * 2;
 
-    signal selected_req     : std_logic;
-    signal selected_we      : std_logic;
-    signal selected_addr    : unsigned(SDRAM_ADDR_WIDTH-1 downto 0);
-    signal selected_wdata   : std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0);
-    signal selected_byte_en : std_logic_vector((SDRAM_DATA_WIDTH/8)-1 downto 0);
-    signal selected_ready   : std_logic;
-    signal selected_rvalid  : std_logic;
-    signal selected_rdata   : std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0);
+    type host_state_t is (
+        HOST_IDLE,
+        HOST_WAIT_WRITE,
+        HOST_WAIT_READ
+    );
 
-    signal mem_req     : std_logic;
-    signal mem_we      : std_logic;
-    signal mem_addr    : unsigned(SDRAM_ADDR_WIDTH-1 downto 0);
-    signal mem_wdata   : std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0);
-    signal mem_byte_en : std_logic_vector((SDRAM_DATA_WIDTH/8)-1 downto 0);
-    signal mem_ready   : std_logic;
-    signal mem_rvalid  : std_logic;
-    signal mem_rdata   : std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0);
+    signal ctrl_rd_req   : std_logic;
+    signal ctrl_rd_addr  : unsigned(SDRAM_ADDR_WIDTH-1 downto 0);
+    signal ctrl_rd_data  : std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0);
+    signal ctrl_rd_valid : std_logic;
+    signal ctrl_rd_ready : std_logic;
+    signal ctrl_wr_req   : std_logic;
+    signal ctrl_wr_addr  : unsigned(SDRAM_ADDR_WIDTH-1 downto 0);
+    signal ctrl_wr_data  : std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0);
+    signal ctrl_wr_ready : std_logic;
+    signal ctrl_sdram_busy : std_logic;
+
+    signal selected_rd_req   : std_logic;
+    signal selected_rd_addr  : unsigned(SDRAM_ADDR_WIDTH-1 downto 0);
+    signal selected_rd_data  : std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0);
+    signal selected_rd_valid : std_logic;
+    signal selected_rd_ready : std_logic;
+    signal selected_wr_req   : std_logic;
+    signal selected_wr_addr  : unsigned(SDRAM_ADDR_WIDTH-1 downto 0);
+    signal selected_wr_data  : std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0);
+    signal selected_wr_ready : std_logic;
+    signal selected_busy     : std_logic;
+
+    signal host_state        : host_state_t := HOST_IDLE;
+    signal host_rd_req_reg   : std_logic := '0';
+    signal host_rd_addr_reg  : unsigned(SDRAM_ADDR_WIDTH-1 downto 0) := (others => '0');
+    signal host_wr_req_reg   : std_logic := '0';
+    signal host_wr_addr_reg  : unsigned(SDRAM_ADDR_WIDTH-1 downto 0) := (others => '0');
+    signal host_wr_data_reg  : std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0) := (others => '0');
+    signal host_data_out_reg : std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0) := (others => '0');
 
     signal busy_int : std_logic;
     signal done_int : std_logic;
@@ -78,26 +95,41 @@ architecture rtl of matrix_accelerator_sdram_core_top is
     signal event_sdram_write : std_logic;
     signal event_mac_group   : std_logic;
 
+    function host_base(
+        constant matrix_sel : std_logic_vector(1 downto 0)
+    ) return unsigned is
+        variable base_nat : natural;
+    begin
+        if matrix_sel = MATRIX_ID_A then
+            base_nat := BASE_A;
+        elsif matrix_sel = MATRIX_ID_B then
+            base_nat := BASE_B;
+        else
+            base_nat := BASE_C;
+        end if;
+
+        return to_unsigned(base_nat, SDRAM_ADDR_WIDTH);
+    end function;
+
 begin
 
     busy <= busy_int;
     done <= done_int;
+    host_data_out <= host_data_out_reg;
 
     ctrl_active <= busy_int or start;
 
-    selected_req     <= ctrl_req when ctrl_active = '1' else host_req;
-    selected_we      <= ctrl_we when ctrl_active = '1' else host_we;
-    selected_addr    <= ctrl_addr when ctrl_active = '1' else host_addr;
-    selected_wdata   <= ctrl_wdata when ctrl_active = '1' else host_wdata;
-    selected_byte_en <= ctrl_byte_en when ctrl_active = '1' else host_byte_en;
+    selected_rd_req  <= ctrl_rd_req when ctrl_active = '1' else host_rd_req_reg;
+    selected_rd_addr <= ctrl_rd_addr when ctrl_active = '1' else host_rd_addr_reg;
+    selected_wr_req  <= ctrl_wr_req when ctrl_active = '1' else host_wr_req_reg;
+    selected_wr_addr <= ctrl_wr_addr when ctrl_active = '1' else host_wr_addr_reg;
+    selected_wr_data <= ctrl_wr_data when ctrl_active = '1' else host_wr_data_reg;
 
-    ctrl_ready  <= selected_ready when ctrl_active = '1' else '0';
-    ctrl_rvalid <= selected_rvalid when ctrl_active = '1' else '0';
-    ctrl_rdata  <= selected_rdata;
-
-    host_ready  <= selected_ready when ctrl_active = '0' else '0';
-    host_rvalid <= selected_rvalid when ctrl_active = '0' else '0';
-    host_rdata  <= selected_rdata;
+    ctrl_rd_data  <= selected_rd_data;
+    ctrl_rd_valid <= selected_rd_valid when ctrl_active = '1' else '0';
+    ctrl_rd_ready <= selected_rd_ready when ctrl_active = '1' else '0';
+    ctrl_wr_ready <= selected_wr_ready when ctrl_active = '1' else '0';
+    ctrl_sdram_busy <= selected_busy when ctrl_active = '1' else '1';
 
     u_controller : entity work.accelerator_controller
         generic map (
@@ -115,100 +147,93 @@ begin
             start             => start,
             busy              => busy_int,
             done              => done_int,
-            sdram_req         => ctrl_req,
-            sdram_we          => ctrl_we,
-            sdram_addr        => ctrl_addr,
-            sdram_wdata       => ctrl_wdata,
-            sdram_byte_en     => ctrl_byte_en,
-            sdram_ready       => ctrl_ready,
-            sdram_rvalid      => ctrl_rvalid,
-            sdram_rdata       => ctrl_rdata,
-            event_sdram_read  => event_sdram_read,
-            event_sdram_write => event_sdram_write,
-            event_mac_group   => event_mac_group
-        );
-
-    u_bus_if : entity work.sdram_bus_if
-        generic map (
-            DATA_WIDTH => SDRAM_DATA_WIDTH,
-            ADDR_WIDTH => SDRAM_ADDR_WIDTH
-        )
-        port map (
-            client_req     => selected_req,
-            client_we      => selected_we,
-            client_addr    => selected_addr,
-            client_wdata   => selected_wdata,
-            client_byte_en => selected_byte_en,
-            client_ready   => selected_ready,
-            client_rvalid  => selected_rvalid,
-            client_rdata   => selected_rdata,
-            mem_req        => mem_req,
-            mem_we         => mem_we,
-            mem_addr       => mem_addr,
-            mem_wdata      => mem_wdata,
-            mem_byte_en    => mem_byte_en,
-            mem_ready      => mem_ready,
-            mem_rvalid     => mem_rvalid,
-            mem_rdata      => mem_rdata
-        );
-
-    gen_sim_sdram : if USE_SIM_SDRAM generate
-        u_sdram : entity work.sdram_sim_wrapper
-            generic map (
-                DATA_WIDTH => SDRAM_DATA_WIDTH,
-                ADDR_WIDTH => SDRAM_ADDR_WIDTH,
-                DEPTH      => SDRAM_DEPTH
-            )
-            port map (
-                clk     => clk,
-                rst     => rst,
-                req     => mem_req,
-                we      => mem_we,
-                addr    => mem_addr,
-                wdata   => mem_wdata,
-                byte_en => mem_byte_en,
-                ready   => mem_ready,
-                rvalid  => mem_rvalid,
-                rdata   => mem_rdata
-            );
-    end generate;
-
-    gen_ip_sdram : if not USE_SIM_SDRAM generate
-        u_sdram : entity work.sdram_ip_wrapper
-            generic map (
-                DATA_WIDTH => SDRAM_DATA_WIDTH,
-                ADDR_WIDTH => SDRAM_ADDR_WIDTH
-            )
-            port map (
-                clk     => clk,
-                rst     => rst,
-                req     => mem_req,
-                we      => mem_we,
-                addr    => mem_addr,
-                wdata   => mem_wdata,
-                byte_en => mem_byte_en,
-                ready   => mem_ready,
-                rvalid  => mem_rvalid,
-                rdata   => mem_rdata
-            );
-    end generate;
-
-    u_perf : entity work.perf_counters
-        generic map (
-            COUNTER_WIDTH => 64
-        )
-        port map (
-            clk               => clk,
-            rst               => rst,
-            clear             => start,
-            enable            => busy_int,
+            sdram_rd_req      => ctrl_rd_req,
+            sdram_rd_addr     => ctrl_rd_addr,
+            sdram_rd_data     => ctrl_rd_data,
+            sdram_rd_valid    => ctrl_rd_valid,
+            sdram_rd_ready    => ctrl_rd_ready,
+            sdram_wr_req      => ctrl_wr_req,
+            sdram_wr_addr     => ctrl_wr_addr,
+            sdram_wr_data     => ctrl_wr_data,
+            sdram_wr_ready    => ctrl_wr_ready,
+            sdram_busy        => ctrl_sdram_busy,
             event_sdram_read  => event_sdram_read,
             event_sdram_write => event_sdram_write,
             event_mac_group   => event_mac_group,
-            cycle_count       => perf_cycles,
-            sdram_read_count  => perf_sdram_reads,
-            sdram_write_count => perf_sdram_writes,
-            mac_group_count   => perf_mac_groups
+            perf_total_cycles        => perf_total_cycles,
+            perf_load_cycles         => perf_load_cycles,
+            perf_compute_cycles      => perf_compute_cycles,
+            perf_store_cycles        => perf_store_cycles,
+            perf_num_tiles_processed => perf_num_tiles_processed,
+            perf_num_mac_ops_issued  => perf_num_mac_ops_issued
         );
+
+    u_sdram : entity work.sdram_model
+        generic map (
+            DATA_WIDTH    => SDRAM_DATA_WIDTH,
+            ADDR_WIDTH    => SDRAM_ADDR_WIDTH,
+            READ_LATENCY  => READ_LATENCY,
+            WRITE_LATENCY => WRITE_LATENCY,
+            DEPTH         => SDRAM_DEPTH
+        )
+        port map (
+            clk      => clk,
+            rst      => rst,
+            rd_req   => selected_rd_req,
+            rd_addr  => selected_rd_addr,
+            rd_data  => selected_rd_data,
+            rd_valid => selected_rd_valid,
+            rd_ready => selected_rd_ready,
+            wr_req   => selected_wr_req,
+            wr_addr  => selected_wr_addr,
+            wr_data  => selected_wr_data,
+            wr_ready => selected_wr_ready,
+            busy     => selected_busy
+        );
+
+    process(clk, rst)
+    begin
+        if rst = '1' then
+            host_state        <= HOST_IDLE;
+            host_rd_req_reg   <= '0';
+            host_rd_addr_reg  <= (others => '0');
+            host_wr_req_reg   <= '0';
+            host_wr_addr_reg  <= (others => '0');
+            host_wr_data_reg  <= (others => '0');
+            host_data_out_reg <= (others => '0');
+
+        elsif rising_edge(clk) then
+            host_rd_req_reg <= '0';
+            host_wr_req_reg <= '0';
+
+            case host_state is
+                when HOST_IDLE =>
+                    if ctrl_active = '0' then
+                        if host_wr_en = '1' and selected_wr_ready = '1' then
+                            host_wr_addr_reg <= host_base(host_matrix_sel) + host_addr;
+                            host_wr_data_reg <= host_data_in;
+                            host_wr_req_reg  <= '1';
+                            host_state       <= HOST_WAIT_WRITE;
+
+                        elsif host_rd_en = '1' and selected_rd_ready = '1' then
+                            host_rd_addr_reg <= to_unsigned(BASE_C, SDRAM_ADDR_WIDTH) + host_rd_addr;
+                            host_rd_req_reg  <= '1';
+                            host_state       <= HOST_WAIT_READ;
+                        end if;
+                    end if;
+
+                when HOST_WAIT_WRITE =>
+                    if selected_wr_ready = '1' and selected_busy = '0' then
+                        host_state <= HOST_IDLE;
+                    end if;
+
+                when HOST_WAIT_READ =>
+                    if selected_rd_valid = '1' then
+                        host_data_out_reg <= selected_rd_data;
+                        host_state        <= HOST_IDLE;
+                    end if;
+            end case;
+        end if;
+    end process;
 
 end architecture rtl;

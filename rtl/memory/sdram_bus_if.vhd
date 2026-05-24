@@ -4,41 +4,58 @@ use ieee.numeric_std.all;
 
 entity sdram_bus_if is
     generic (
-        DATA_WIDTH : positive := 32;
-        ADDR_WIDTH : positive := 18
+        DATA_WIDTH    : positive := 32;
+        ADDR_WIDTH    : positive := 18;
+        READ_LATENCY  : natural  := 3;
+        WRITE_LATENCY : natural  := 2
     );
     port (
-        client_req     : in std_logic;
-        client_we      : in std_logic;
-        client_addr    : in unsigned(ADDR_WIDTH-1 downto 0);
-        client_wdata   : in std_logic_vector(DATA_WIDTH-1 downto 0);
-        client_byte_en : in std_logic_vector((DATA_WIDTH/8)-1 downto 0);
-        client_ready   : out std_logic;
-        client_rvalid  : out std_logic;
-        client_rdata   : out std_logic_vector(DATA_WIDTH-1 downto 0);
+        clk : in std_logic;
+        rst : in std_logic;
 
-        mem_req     : out std_logic;
-        mem_we      : out std_logic;
-        mem_addr    : out unsigned(ADDR_WIDTH-1 downto 0);
-        mem_wdata   : out std_logic_vector(DATA_WIDTH-1 downto 0);
-        mem_byte_en : out std_logic_vector((DATA_WIDTH/8)-1 downto 0);
-        mem_ready   : in std_logic;
-        mem_rvalid  : in std_logic;
-        mem_rdata   : in std_logic_vector(DATA_WIDTH-1 downto 0)
+        client_rd_req   : in std_logic;
+        client_rd_addr  : in unsigned(ADDR_WIDTH-1 downto 0);
+        client_rd_data  : out std_logic_vector(DATA_WIDTH-1 downto 0);
+        client_rd_valid : out std_logic;
+        client_rd_ready : out std_logic;
+
+        client_wr_req   : in std_logic;
+        client_wr_addr  : in unsigned(ADDR_WIDTH-1 downto 0);
+        client_wr_data  : in std_logic_vector(DATA_WIDTH-1 downto 0);
+        client_wr_ready : out std_logic;
+
+        client_busy : out std_logic;
+
+        mem_rd_req   : out std_logic;
+        mem_rd_addr  : out unsigned(ADDR_WIDTH-1 downto 0);
+        mem_rd_data  : in std_logic_vector(DATA_WIDTH-1 downto 0);
+        mem_rd_valid : in std_logic;
+        mem_rd_ready : in std_logic;
+
+        mem_wr_req   : out std_logic;
+        mem_wr_addr  : out unsigned(ADDR_WIDTH-1 downto 0);
+        mem_wr_data  : out std_logic_vector(DATA_WIDTH-1 downto 0);
+        mem_wr_ready : in std_logic;
+
+        mem_busy : in std_logic
     );
 end entity sdram_bus_if;
 
 architecture rtl of sdram_bus_if is
 begin
 
-    mem_req     <= client_req;
-    mem_we      <= client_we;
-    mem_addr    <= client_addr;
-    mem_wdata   <= client_wdata;
-    mem_byte_en <= client_byte_en;
+    mem_rd_req  <= client_rd_req;
+    mem_rd_addr <= client_rd_addr;
 
-    client_ready  <= mem_ready;
-    client_rvalid <= mem_rvalid;
-    client_rdata  <= mem_rdata;
+    client_rd_data  <= mem_rd_data;
+    client_rd_valid <= mem_rd_valid;
+    client_rd_ready <= mem_rd_ready;
+
+    mem_wr_req  <= client_wr_req;
+    mem_wr_addr <= client_wr_addr;
+    mem_wr_data <= client_wr_data;
+
+    client_wr_ready <= mem_wr_ready;
+    client_busy     <= mem_busy;
 
 end architecture rtl;

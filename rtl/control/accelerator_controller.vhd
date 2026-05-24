@@ -24,18 +24,29 @@ entity accelerator_controller is
         busy  : out std_logic;
         done  : out std_logic;
 
-        sdram_req     : out std_logic;
-        sdram_we      : out std_logic;
-        sdram_addr    : out unsigned(SDRAM_ADDR_WIDTH-1 downto 0);
-        sdram_wdata   : out std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0);
-        sdram_byte_en : out std_logic_vector((SDRAM_DATA_WIDTH/8)-1 downto 0);
-        sdram_ready   : in std_logic;
-        sdram_rvalid  : in std_logic;
-        sdram_rdata   : in std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0);
+        sdram_rd_req   : out std_logic;
+        sdram_rd_addr  : out unsigned(SDRAM_ADDR_WIDTH-1 downto 0);
+        sdram_rd_data  : in std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0);
+        sdram_rd_valid : in std_logic;
+        sdram_rd_ready : in std_logic;
+
+        sdram_wr_req   : out std_logic;
+        sdram_wr_addr  : out unsigned(SDRAM_ADDR_WIDTH-1 downto 0);
+        sdram_wr_data  : out std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0);
+        sdram_wr_ready : in std_logic;
+
+        sdram_busy : in std_logic;
 
         event_sdram_read  : out std_logic;
         event_sdram_write : out std_logic;
-        event_mac_group   : out std_logic
+        event_mac_group   : out std_logic;
+
+        perf_total_cycles        : out unsigned(63 downto 0);
+        perf_load_cycles         : out unsigned(63 downto 0);
+        perf_compute_cycles      : out unsigned(63 downto 0);
+        perf_store_cycles        : out unsigned(63 downto 0);
+        perf_num_tiles_processed : out unsigned(63 downto 0);
+        perf_num_mac_ops_issued  : out unsigned(63 downto 0)
     );
 end entity accelerator_controller;
 
@@ -44,9 +55,9 @@ architecture rtl of accelerator_controller is
     constant MATRIX_ELEMS : positive := N * N;
     constant TILE_ELEMS   : positive := TILE_SIZE * TILE_SIZE;
     constant NUM_TILES    : positive := N / TILE_SIZE;
+    constant TILE_IDX_W   : positive := clog2(NUM_TILES + 1);
+    constant LOCAL_IDX_W  : positive := clog2(TILE_SIZE);
 
-    constant A_BASE : natural := 0;
-    constant B_BASE : natural := MATRIX_ELEMS;
     constant C_BASE : natural := MATRIX_ELEMS * 2;
 
     subtype data_t is signed(DATA_WIDTH-1 downto 0);
@@ -55,73 +66,103 @@ architecture rtl of accelerator_controller is
     type data_tile_t is array (0 to TILE_ELEMS-1) of data_t;
     type acc_tile_t is array (0 to TILE_ELEMS-1) of acc_t;
 
-    type state_t is (
-        IDLE,
-        CLEAR_C_TILE,
-        LOAD_C_REQ,
-        LOAD_C_WAIT,
-        LOAD_A_REQ,
-        LOAD_A_WAIT,
-        LOAD_B_REQ,
-        LOAD_B_WAIT,
-        START_CORE,
-        WAIT_CORE,
-        CAPTURE_CORE,
-        STORE_C_REQ,
-        ADVANCE_TILE,
-        DONE_STATE
+    type compute_state_t is (
+        COMP_IDLE,
+        COMP_SET_READ_ADDR,
+        COMP_WAIT_READ,
+        COMP_CAPTURE_READ,
+        COMP_START_CORE,
+        COMP_WAIT_CORE,
+        COMP_CAPTURE_CORE,
+        COMP_SET_WRITE_ADDR,
+        COMP_WRITE_HOLD,
+        COMP_DONE
     );
 
-    signal state : state_t := IDLE;
+    signal sched_load_done    : std_logic;
+    signal sched_compute_done : std_logic := '0';
+    signal sched_store_done   : std_logic;
 
-    signal tile_row : integer range 0 to NUM_TILES-1 := 0;
-    signal tile_col : integer range 0 to NUM_TILES-1 := 0;
-    signal tile_k   : integer range 0 to NUM_TILES-1 := 0;
-    signal tile_idx : integer range 0 to TILE_ELEMS-1 := 0;
+    signal sched_busy          : std_logic;
+    signal sched_done          : std_logic;
+    signal sched_init_c_tile   : std_logic;
+    signal sched_load_start    : std_logic;
+    signal sched_compute_start : std_logic;
+    signal sched_store_start   : std_logic;
+    signal sched_tile_i        : unsigned(TILE_IDX_W-1 downto 0);
+    signal sched_tile_j        : unsigned(TILE_IDX_W-1 downto 0);
+    signal sched_tile_k        : unsigned(TILE_IDX_W-1 downto 0);
 
-    signal a_tile : data_tile_t := (others => (others => '0'));
-    signal b_tile : data_tile_t := (others => (others => '0'));
-    signal c_tile : acc_tile_t  := (others => (others => '0'));
+    signal loader_busy : std_logic;
+    signal loader_done : std_logic;
+    signal loader_rd_req  : std_logic;
+    signal loader_rd_addr : unsigned(SDRAM_ADDR_WIDTH-1 downto 0);
 
-    signal busy_reg : std_logic := '0';
-    signal done_reg : std_logic := '0';
+    signal loader_a_wr_en    : std_logic;
+    signal loader_a_row      : unsigned(LOCAL_IDX_W-1 downto 0);
+    signal loader_a_col      : unsigned(LOCAL_IDX_W-1 downto 0);
+    signal loader_a_wr_data  : data_t;
+    signal loader_b_wr_en    : std_logic;
+    signal loader_b_row      : unsigned(LOCAL_IDX_W-1 downto 0);
+    signal loader_b_col      : unsigned(LOCAL_IDX_W-1 downto 0);
+    signal loader_b_wr_data  : data_t;
 
-    signal sdram_req_reg     : std_logic := '0';
-    signal sdram_we_reg      : std_logic := '0';
-    signal sdram_addr_reg    : unsigned(SDRAM_ADDR_WIDTH-1 downto 0) := (others => '0');
-    signal sdram_wdata_reg   : std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0) := (others => '0');
-    signal sdram_byte_en_reg : std_logic_vector((SDRAM_DATA_WIDTH/8)-1 downto 0) := (others => '1');
+    signal store_busy : std_logic;
+    signal store_done : std_logic;
+    signal store_wr_req  : std_logic;
+    signal store_wr_addr : unsigned(SDRAM_ADDR_WIDTH-1 downto 0);
+    signal store_wr_data : std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0);
+    signal store_c_row   : unsigned(LOCAL_IDX_W-1 downto 0);
+    signal store_c_col   : unsigned(LOCAL_IDX_W-1 downto 0);
 
-    signal event_read_reg      : std_logic := '0';
-    signal event_write_reg     : std_logic := '0';
-    signal event_mac_group_reg : std_logic := '0';
+    signal a_buf_row      : unsigned(LOCAL_IDX_W-1 downto 0) := (others => '0');
+    signal a_buf_col      : unsigned(LOCAL_IDX_W-1 downto 0) := (others => '0');
+    signal a_buf_wr_en    : std_logic := '0';
+    signal a_buf_wr_data  : data_t := (others => '0');
+    signal a_buf_rd_data  : data_t;
+    signal a_buf_addr_dbg : unsigned(clog2(TILE_ELEMS)-1 downto 0);
 
-    signal core_start : std_logic := '0';
-    signal core_done  : std_logic;
+    signal b_buf_row      : unsigned(LOCAL_IDX_W-1 downto 0) := (others => '0');
+    signal b_buf_col      : unsigned(LOCAL_IDX_W-1 downto 0) := (others => '0');
+    signal b_buf_wr_en    : std_logic := '0';
+    signal b_buf_wr_data  : data_t := (others => '0');
+    signal b_buf_rd_data  : data_t;
+    signal b_buf_addr_dbg : unsigned(clog2(TILE_ELEMS)-1 downto 0);
 
+    signal c_buf_row      : unsigned(LOCAL_IDX_W-1 downto 0) := (others => '0');
+    signal c_buf_col      : unsigned(LOCAL_IDX_W-1 downto 0) := (others => '0');
+    signal c_buf_wr_en    : std_logic := '0';
+    signal c_buf_wr_data  : acc_t := (others => '0');
+    signal c_buf_rd_data  : acc_t;
+    signal c_buf_addr_dbg : unsigned(clog2(TILE_ELEMS)-1 downto 0);
+
+    signal compute_state      : compute_state_t := COMP_IDLE;
+    signal compute_idx        : integer range 0 to TILE_ELEMS-1 := 0;
+    signal compute_local_row  : unsigned(LOCAL_IDX_W-1 downto 0) := (others => '0');
+    signal compute_local_col  : unsigned(LOCAL_IDX_W-1 downto 0) := (others => '0');
+    signal compute_c_wr_en    : std_logic := '0';
+    signal compute_c_wr_data  : acc_t := (others => '0');
+    signal compute_done_reg   : std_logic := '0';
+
+    signal a_tile_reg      : data_tile_t := (others => (others => '0'));
+    signal b_tile_reg      : data_tile_t := (others => (others => '0'));
+    signal c_tile_reg      : acc_tile_t := (others => (others => '0'));
+    signal c_tile_result   : acc_tile_t := (others => (others => '0'));
+
+    signal core_start      : std_logic := '0';
+    signal core_done       : std_logic;
     signal core_a_tile     : std_logic_vector((TILE_ELEMS*DATA_WIDTH)-1 downto 0);
     signal core_b_tile     : std_logic_vector((TILE_ELEMS*DATA_WIDTH)-1 downto 0);
     signal core_c_tile_in  : std_logic_vector((TILE_ELEMS*ACC_WIDTH)-1 downto 0);
     signal core_c_tile_out : std_logic_vector((TILE_ELEMS*ACC_WIDTH)-1 downto 0);
 
-    function matrix_addr(
-        constant base    : natural;
-        constant row_idx : natural;
-        constant col_idx : natural
-    ) return unsigned is
-    begin
-        return to_unsigned(base + row_major_addr(row_idx, col_idx, N), SDRAM_ADDR_WIDTH);
-    end function;
+    signal loader_active : std_logic;
+    signal store_active  : std_logic;
 
-    function tile_row_of(constant idx : natural) return natural is
-    begin
-        return idx / TILE_SIZE;
-    end function;
-
-    function tile_col_of(constant idx : natural) return natural is
-    begin
-        return idx mod TILE_SIZE;
-    end function;
+    signal perf_compute_active : std_logic;
+    signal perf_tile_done      : std_logic;
+    signal perf_mac_ops_issued_cycle : unsigned(63 downto 0);
+    signal store_done_d : std_logic := '0';
 
     function pack_data_tile(constant tile : data_tile_t) return std_logic_vector is
         variable result : std_logic_vector((TILE_ELEMS*DATA_WIDTH)-1 downto 0);
@@ -169,22 +210,191 @@ begin
         report "accelerator_controller exige SDRAM_DATA_WIDTH >= ACC_WIDTH."
         severity failure;
 
-    busy <= busy_reg;
-    done <= done_reg;
+    busy <= sched_busy;
+    done <= sched_done;
 
-    sdram_req     <= sdram_req_reg;
-    sdram_we      <= sdram_we_reg;
-    sdram_addr    <= sdram_addr_reg;
-    sdram_wdata   <= sdram_wdata_reg;
-    sdram_byte_en <= sdram_byte_en_reg;
+    sched_load_done    <= loader_done;
+    sched_compute_done <= compute_done_reg;
+    sched_store_done   <= store_done;
 
-    event_sdram_read  <= event_read_reg;
-    event_sdram_write <= event_write_reg;
-    event_mac_group   <= event_mac_group_reg;
+    loader_active <= loader_busy or sched_load_start;
+    store_active  <= store_busy or sched_store_start;
 
-    core_a_tile    <= pack_data_tile(a_tile);
-    core_b_tile    <= pack_data_tile(b_tile);
-    core_c_tile_in <= pack_acc_tile(c_tile);
+    sdram_rd_req  <= loader_rd_req;
+    sdram_rd_addr <= loader_rd_addr;
+    sdram_wr_req  <= store_wr_req;
+    sdram_wr_addr <= store_wr_addr + to_unsigned(C_BASE, SDRAM_ADDR_WIDTH);
+    sdram_wr_data <= store_wr_data;
+
+    event_sdram_read  <= loader_rd_req;
+    event_sdram_write <= store_wr_req;
+    event_mac_group   <= core_start;
+
+    perf_compute_active <= '1' when compute_state /= COMP_IDLE and compute_state /= COMP_DONE else '0';
+    perf_tile_done <= store_done and not store_done_d;
+    perf_mac_ops_issued_cycle <= to_unsigned(TILE_SIZE * TILE_SIZE * TILE_SIZE, 64) when core_start = '1' else
+                                 (others => '0');
+
+    a_buf_row     <= loader_a_row when loader_active = '1' else compute_local_row;
+    a_buf_col     <= loader_a_col when loader_active = '1' else compute_local_col;
+    a_buf_wr_en   <= loader_a_wr_en when loader_active = '1' else '0';
+    a_buf_wr_data <= loader_a_wr_data;
+
+    b_buf_row     <= loader_b_row when loader_active = '1' else compute_local_row;
+    b_buf_col     <= loader_b_col when loader_active = '1' else compute_local_col;
+    b_buf_wr_en   <= loader_b_wr_en when loader_active = '1' else '0';
+    b_buf_wr_data <= loader_b_wr_data;
+
+    c_buf_row     <= store_c_row when store_active = '1' else compute_local_row;
+    c_buf_col     <= store_c_col when store_active = '1' else compute_local_col;
+    c_buf_wr_en   <= '0' when store_active = '1' else compute_c_wr_en;
+    c_buf_wr_data <= compute_c_wr_data;
+
+    core_a_tile    <= pack_data_tile(a_tile_reg);
+    core_b_tile    <= pack_data_tile(b_tile_reg);
+    core_c_tile_in <= pack_acc_tile(c_tile_reg);
+
+    u_scheduler : entity work.tile_scheduler
+        generic map (
+            N         => N,
+            TILE_SIZE => TILE_SIZE
+        )
+        port map (
+            clk           => clk,
+            rst           => rst,
+            start         => start,
+            load_done     => sched_load_done,
+            compute_done  => sched_compute_done,
+            store_done    => sched_store_done,
+            busy          => sched_busy,
+            done          => sched_done,
+            init_c_tile   => sched_init_c_tile,
+            load_start    => sched_load_start,
+            compute_start => sched_compute_start,
+            store_start   => sched_store_start,
+            tile_i        => sched_tile_i,
+            tile_j        => sched_tile_j,
+            tile_k        => sched_tile_k
+        );
+
+    u_loader : entity work.tile_loader
+        generic map (
+            N                => N,
+            TILE_SIZE        => TILE_SIZE,
+            DATA_WIDTH       => DATA_WIDTH,
+            SDRAM_DATA_WIDTH => SDRAM_DATA_WIDTH,
+            SDRAM_ADDR_WIDTH => SDRAM_ADDR_WIDTH
+        )
+        port map (
+            clk              => clk,
+            rst              => rst,
+            start            => sched_load_start,
+            tile_i           => sched_tile_i,
+            tile_j           => sched_tile_j,
+            tile_k           => sched_tile_k,
+            busy             => loader_busy,
+            done             => loader_done,
+            sdram_rd_req     => loader_rd_req,
+            sdram_rd_addr    => loader_rd_addr,
+            sdram_rd_data    => sdram_rd_data,
+            sdram_rd_valid   => sdram_rd_valid,
+            sdram_rd_ready   => sdram_rd_ready,
+            sdram_busy       => sdram_busy,
+            tile_a_wr_en     => loader_a_wr_en,
+            tile_a_local_row => loader_a_row,
+            tile_a_local_col => loader_a_col,
+            tile_a_wr_data   => loader_a_wr_data,
+            tile_b_wr_en     => loader_b_wr_en,
+            tile_b_local_row => loader_b_row,
+            tile_b_local_col => loader_b_col,
+            tile_b_wr_data   => loader_b_wr_data
+        );
+
+    u_store : entity work.tile_store
+        generic map (
+            N                => N,
+            TILE_SIZE        => TILE_SIZE,
+            ACC_WIDTH        => ACC_WIDTH,
+            SDRAM_DATA_WIDTH => SDRAM_DATA_WIDTH,
+            SDRAM_ADDR_WIDTH => SDRAM_ADDR_WIDTH
+        )
+        port map (
+            clk              => clk,
+            rst              => rst,
+            start            => sched_store_start,
+            tile_i           => sched_tile_i,
+            tile_j           => sched_tile_j,
+            busy             => store_busy,
+            done             => store_done,
+            sdram_wr_req     => store_wr_req,
+            sdram_wr_addr    => store_wr_addr,
+            sdram_wr_data    => store_wr_data,
+            sdram_wr_ready   => sdram_wr_ready,
+            sdram_busy       => sdram_busy,
+            tile_c_local_row => store_c_row,
+            tile_c_local_col => store_c_col,
+            tile_c_rd_data   => c_buf_rd_data
+        );
+
+    u_buf_a : entity work.tile_buffer_m10k
+        generic map (
+            TILE_SIZE     => TILE_SIZE,
+            DATA_WIDTH    => DATA_WIDTH,
+            ACC_WIDTH     => ACC_WIDTH,
+            USE_M10K      => true,
+            IS_ACC_BUFFER => false,
+            BUFFER_IMPL   => "INFERRED"
+        )
+        port map (
+            clk            => clk,
+            rst            => rst,
+            wr_en          => a_buf_wr_en,
+            local_row      => a_buf_row,
+            local_col      => a_buf_col,
+            wr_data        => a_buf_wr_data,
+            rd_data        => a_buf_rd_data,
+            local_addr_dbg => a_buf_addr_dbg
+        );
+
+    u_buf_b : entity work.tile_buffer_m10k
+        generic map (
+            TILE_SIZE     => TILE_SIZE,
+            DATA_WIDTH    => DATA_WIDTH,
+            ACC_WIDTH     => ACC_WIDTH,
+            USE_M10K      => true,
+            IS_ACC_BUFFER => false,
+            BUFFER_IMPL   => "INFERRED"
+        )
+        port map (
+            clk            => clk,
+            rst            => rst,
+            wr_en          => b_buf_wr_en,
+            local_row      => b_buf_row,
+            local_col      => b_buf_col,
+            wr_data        => b_buf_wr_data,
+            rd_data        => b_buf_rd_data,
+            local_addr_dbg => b_buf_addr_dbg
+        );
+
+    u_buf_c : entity work.tile_buffer_m10k
+        generic map (
+            TILE_SIZE     => TILE_SIZE,
+            DATA_WIDTH    => DATA_WIDTH,
+            ACC_WIDTH     => ACC_WIDTH,
+            USE_M10K      => true,
+            IS_ACC_BUFFER => true,
+            BUFFER_IMPL   => "INFERRED"
+        )
+        port map (
+            clk            => clk,
+            rst            => rst,
+            wr_en          => c_buf_wr_en,
+            local_row      => c_buf_row,
+            local_col      => c_buf_col,
+            wr_data        => c_buf_wr_data,
+            rd_data        => c_buf_rd_data,
+            local_addr_dbg => c_buf_addr_dbg
+        );
 
     u_compute : entity work.matrix_tiled_compute_core
         generic map (
@@ -204,202 +414,138 @@ begin
             c_tile_out => core_c_tile_out
         );
 
+    u_perf : entity work.perf_counters
+        generic map (
+            COUNTER_WIDTH => 64
+        )
+        port map (
+            clk                   => clk,
+            rst                   => rst,
+            start_count           => start,
+            stop_count            => sched_done,
+            load_active           => loader_busy,
+            compute_active        => perf_compute_active,
+            store_active          => store_busy,
+            tile_done             => perf_tile_done,
+            mac_ops_issued        => perf_mac_ops_issued_cycle,
+            total_cycles          => perf_total_cycles,
+            load_cycles           => perf_load_cycles,
+            compute_cycles        => perf_compute_cycles,
+            store_cycles          => perf_store_cycles,
+            num_tiles_processed   => perf_num_tiles_processed,
+            num_mac_ops_issued    => perf_num_mac_ops_issued
+        );
+
+    process(clk, rst)
+    begin
+        if rst = '1' then
+            store_done_d <= '0';
+        elsif rising_edge(clk) then
+            store_done_d <= store_done;
+        end if;
+    end process;
+
     process(clk, rst)
         variable local_row : natural;
         variable local_col : natural;
     begin
         if rst = '1' then
-            state                 <= IDLE;
-            tile_row              <= 0;
-            tile_col              <= 0;
-            tile_k                <= 0;
-            tile_idx              <= 0;
-            a_tile                <= (others => (others => '0'));
-            b_tile                <= (others => (others => '0'));
-            c_tile                <= (others => (others => '0'));
-            busy_reg              <= '0';
-            done_reg              <= '0';
-            core_start            <= '0';
-            sdram_req_reg         <= '0';
-            sdram_we_reg          <= '0';
-            sdram_addr_reg        <= (others => '0');
-            sdram_wdata_reg       <= (others => '0');
-            sdram_byte_en_reg     <= (others => '1');
-            event_read_reg        <= '0';
-            event_write_reg       <= '0';
-            event_mac_group_reg   <= '0';
+            compute_state     <= COMP_IDLE;
+            compute_idx       <= 0;
+            compute_local_row <= (others => '0');
+            compute_local_col <= (others => '0');
+            compute_c_wr_en   <= '0';
+            compute_c_wr_data <= (others => '0');
+            compute_done_reg  <= '0';
+            core_start        <= '0';
+            a_tile_reg        <= (others => (others => '0'));
+            b_tile_reg        <= (others => (others => '0'));
+            c_tile_reg        <= (others => (others => '0'));
+            c_tile_result     <= (others => (others => '0'));
 
         elsif rising_edge(clk) then
-            core_start          <= '0';
-            sdram_req_reg       <= '0';
-            sdram_we_reg        <= '0';
-            sdram_byte_en_reg   <= (others => '1');
-            event_read_reg      <= '0';
-            event_write_reg     <= '0';
-            event_mac_group_reg <= '0';
+            core_start       <= '0';
+            compute_c_wr_en  <= '0';
+            compute_done_reg <= '0';
 
-            case state is
-                when IDLE =>
-                    busy_reg <= '0';
-                    done_reg <= '0';
+            case compute_state is
+                when COMP_IDLE =>
+                    compute_idx <= 0;
 
-                    if start = '1' then
-                        tile_row <= 0;
-                        tile_col <= 0;
-                        tile_k   <= 0;
-                        tile_idx <= 0;
-                        busy_reg <= '1';
-                        state    <= CLEAR_C_TILE;
+                    if sched_compute_start = '1' then
+                        compute_state <= COMP_SET_READ_ADDR;
                     end if;
 
-                when CLEAR_C_TILE =>
-                    c_tile   <= (others => (others => '0'));
-                    tile_idx <= 0;
-                    state    <= LOAD_A_REQ;
+                when COMP_SET_READ_ADDR =>
+                    local_row := compute_idx / TILE_SIZE;
+                    local_col := compute_idx mod TILE_SIZE;
 
-                when LOAD_C_REQ =>
-                    local_row := tile_row_of(tile_idx);
-                    local_col := tile_col_of(tile_idx);
+                    compute_local_row <= to_unsigned(local_row, compute_local_row'length);
+                    compute_local_col <= to_unsigned(local_col, compute_local_col'length);
+                    compute_state     <= COMP_WAIT_READ;
 
-                    sdram_addr_reg <= matrix_addr(C_BASE,
-                                                  tile_row * TILE_SIZE + local_row,
-                                                  tile_col * TILE_SIZE + local_col);
+                when COMP_WAIT_READ =>
+                    compute_state <= COMP_CAPTURE_READ;
 
-                    if sdram_ready = '1' then
-                        sdram_req_reg  <= '1';
-                        event_read_reg <= '1';
-                        state          <= LOAD_C_WAIT;
+                when COMP_CAPTURE_READ =>
+                    a_tile_reg(compute_idx) <= a_buf_rd_data;
+                    b_tile_reg(compute_idx) <= b_buf_rd_data;
+
+                    if to_integer(sched_tile_k) = 0 then
+                        c_tile_reg(compute_idx) <= (others => '0');
+                    else
+                        c_tile_reg(compute_idx) <= c_buf_rd_data;
                     end if;
 
-                when LOAD_C_WAIT =>
-                    if sdram_rvalid = '1' then
-                        c_tile(tile_idx) <= signed(sdram_rdata(ACC_WIDTH-1 downto 0));
-
-                        if tile_idx = TILE_ELEMS-1 then
-                            tile_idx <= 0;
-                            state    <= LOAD_A_REQ;
-                        else
-                            tile_idx <= tile_idx + 1;
-                            state    <= LOAD_C_REQ;
-                        end if;
+                    if compute_idx = TILE_ELEMS-1 then
+                        compute_idx   <= 0;
+                        compute_state <= COMP_START_CORE;
+                    else
+                        compute_idx   <= compute_idx + 1;
+                        compute_state <= COMP_SET_READ_ADDR;
                     end if;
 
-                when LOAD_A_REQ =>
-                    local_row := tile_row_of(tile_idx);
-                    local_col := tile_col_of(tile_idx);
+                when COMP_START_CORE =>
+                    core_start    <= '1';
+                    compute_state <= COMP_WAIT_CORE;
 
-                    sdram_addr_reg <= matrix_addr(A_BASE,
-                                                  tile_row * TILE_SIZE + local_row,
-                                                  tile_k * TILE_SIZE + local_col);
-
-                    if sdram_ready = '1' then
-                        sdram_req_reg  <= '1';
-                        event_read_reg <= '1';
-                        state          <= LOAD_A_WAIT;
-                    end if;
-
-                when LOAD_A_WAIT =>
-                    if sdram_rvalid = '1' then
-                        a_tile(tile_idx) <= signed(sdram_rdata(DATA_WIDTH-1 downto 0));
-                        state <= LOAD_B_REQ;
-                    end if;
-
-                when LOAD_B_REQ =>
-                    local_row := tile_row_of(tile_idx);
-                    local_col := tile_col_of(tile_idx);
-
-                    sdram_addr_reg <= matrix_addr(B_BASE,
-                                                  tile_k * TILE_SIZE + local_row,
-                                                  tile_col * TILE_SIZE + local_col);
-
-                    if sdram_ready = '1' then
-                        sdram_req_reg  <= '1';
-                        event_read_reg <= '1';
-                        state          <= LOAD_B_WAIT;
-                    end if;
-
-                when LOAD_B_WAIT =>
-                    if sdram_rvalid = '1' then
-                        b_tile(tile_idx) <= signed(sdram_rdata(DATA_WIDTH-1 downto 0));
-
-                        if tile_idx = TILE_ELEMS-1 then
-                            tile_idx <= 0;
-                            state    <= START_CORE;
-                        else
-                            tile_idx <= tile_idx + 1;
-                            state    <= LOAD_A_REQ;
-                        end if;
-                    end if;
-
-                when START_CORE =>
-                    core_start          <= '1';
-                    event_mac_group_reg <= '1';
-                    state               <= WAIT_CORE;
-
-                when WAIT_CORE =>
+                when COMP_WAIT_CORE =>
                     if core_done = '1' then
-                        tile_idx <= 0;
-                        state    <= CAPTURE_CORE;
+                        compute_state <= COMP_CAPTURE_CORE;
                     end if;
 
-                when CAPTURE_CORE =>
+                when COMP_CAPTURE_CORE =>
                     for idx in 0 to TILE_ELEMS-1 loop
-                        c_tile(idx) <= get_acc_from_flat(core_c_tile_out, idx);
+                        c_tile_result(idx) <= get_acc_from_flat(core_c_tile_out, idx);
                     end loop;
 
-                    tile_idx <= 0;
-                    state    <= STORE_C_REQ;
+                    compute_idx   <= 0;
+                    compute_state <= COMP_SET_WRITE_ADDR;
 
-                when STORE_C_REQ =>
-                    local_row := tile_row_of(tile_idx);
-                    local_col := tile_col_of(tile_idx);
+                when COMP_SET_WRITE_ADDR =>
+                    local_row := compute_idx / TILE_SIZE;
+                    local_col := compute_idx mod TILE_SIZE;
 
-                    sdram_addr_reg  <= matrix_addr(C_BASE,
-                                                   tile_row * TILE_SIZE + local_row,
-                                                   tile_col * TILE_SIZE + local_col);
-                    sdram_wdata_reg <= std_logic_vector(resize(c_tile(tile_idx), SDRAM_DATA_WIDTH));
-                    sdram_we_reg    <= '1';
+                    compute_local_row <= to_unsigned(local_row, compute_local_row'length);
+                    compute_local_col <= to_unsigned(local_col, compute_local_col'length);
+                    compute_c_wr_data <= c_tile_result(compute_idx);
+                    compute_c_wr_en   <= '1';
+                    compute_state     <= COMP_WRITE_HOLD;
 
-                    if sdram_ready = '1' then
-                        sdram_req_reg   <= '1';
-                        event_write_reg <= '1';
-
-                        if tile_idx = TILE_ELEMS-1 then
-                            tile_idx <= 0;
-                            state    <= ADVANCE_TILE;
-                        else
-                            tile_idx <= tile_idx + 1;
-                        end if;
-                    end if;
-
-                when ADVANCE_TILE =>
-                    if tile_k = NUM_TILES-1 then
-                        tile_k <= 0;
-
-                        if tile_col = NUM_TILES-1 then
-                            tile_col <= 0;
-
-                            if tile_row = NUM_TILES-1 then
-                                state <= DONE_STATE;
-                            else
-                                tile_row <= tile_row + 1;
-                                state    <= CLEAR_C_TILE;
-                            end if;
-                        else
-                            tile_col <= tile_col + 1;
-                            state    <= CLEAR_C_TILE;
-                        end if;
+                when COMP_WRITE_HOLD =>
+                    if compute_idx = TILE_ELEMS-1 then
+                        compute_done_reg <= '1';
+                        compute_state    <= COMP_DONE;
                     else
-                        tile_k <= tile_k + 1;
-                        state  <= LOAD_C_REQ;
+                        compute_idx   <= compute_idx + 1;
+                        compute_state <= COMP_SET_WRITE_ADDR;
                     end if;
 
-                when DONE_STATE =>
-                    busy_reg <= '0';
-                    done_reg <= '1';
+                when COMP_DONE =>
+                    compute_done_reg <= '1';
 
-                    if start = '0' then
-                        state <= IDLE;
+                    if sched_compute_start = '0' then
+                        compute_state <= COMP_IDLE;
                     end if;
             end case;
         end if;

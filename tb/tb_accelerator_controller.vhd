@@ -28,35 +28,46 @@ architecture sim of tb_accelerator_controller is
     signal busy  : std_logic;
     signal done  : std_logic;
 
-    signal ctrl_req     : std_logic;
-    signal ctrl_we      : std_logic;
-    signal ctrl_addr    : unsigned(SDRAM_ADDR_WIDTH-1 downto 0);
-    signal ctrl_wdata   : std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0);
-    signal ctrl_byte_en : std_logic_vector((SDRAM_DATA_WIDTH/8)-1 downto 0);
-    signal ctrl_ready   : std_logic;
-    signal ctrl_rvalid  : std_logic;
-    signal ctrl_rdata   : std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0);
+    signal ctrl_rd_req   : std_logic;
+    signal ctrl_rd_addr  : unsigned(SDRAM_ADDR_WIDTH-1 downto 0);
+    signal ctrl_rd_data  : std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0);
+    signal ctrl_rd_valid : std_logic;
+    signal ctrl_rd_ready : std_logic;
+    signal ctrl_wr_req   : std_logic;
+    signal ctrl_wr_addr  : unsigned(SDRAM_ADDR_WIDTH-1 downto 0);
+    signal ctrl_wr_data  : std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0);
+    signal ctrl_wr_ready : std_logic;
+    signal ctrl_sdram_busy : std_logic;
 
-    signal host_req   : std_logic := '0';
-    signal host_we    : std_logic := '0';
-    signal host_addr  : unsigned(SDRAM_ADDR_WIDTH-1 downto 0) := (others => '0');
-    signal host_wdata : std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0) := (others => '0');
-    signal host_rdata : std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0);
-    signal host_rvalid : std_logic;
+    signal host_rd_req   : std_logic := '0';
+    signal host_rd_addr  : unsigned(SDRAM_ADDR_WIDTH-1 downto 0) := (others => '0');
+    signal host_rd_data  : std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0);
+    signal host_rd_valid : std_logic;
+    signal host_wr_req   : std_logic := '0';
+    signal host_wr_addr  : unsigned(SDRAM_ADDR_WIDTH-1 downto 0) := (others => '0');
+    signal host_wr_data  : std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0) := (others => '0');
 
-    signal mem_req     : std_logic;
-    signal mem_we      : std_logic;
-    signal mem_addr    : unsigned(SDRAM_ADDR_WIDTH-1 downto 0);
-    signal mem_wdata   : std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0);
-    signal mem_byte_en : std_logic_vector((SDRAM_DATA_WIDTH/8)-1 downto 0);
-    signal mem_ready   : std_logic;
-    signal mem_rvalid  : std_logic;
-    signal mem_rdata   : std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0);
+    signal mem_rd_req   : std_logic;
+    signal mem_rd_addr  : unsigned(SDRAM_ADDR_WIDTH-1 downto 0);
+    signal mem_rd_data  : std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0);
+    signal mem_rd_valid : std_logic;
+    signal mem_rd_ready : std_logic;
+    signal mem_wr_req   : std_logic;
+    signal mem_wr_addr  : unsigned(SDRAM_ADDR_WIDTH-1 downto 0);
+    signal mem_wr_data  : std_logic_vector(SDRAM_DATA_WIDTH-1 downto 0);
+    signal mem_wr_ready : std_logic;
+    signal mem_busy     : std_logic;
 
     signal ctrl_active : std_logic;
     signal event_read  : std_logic;
     signal event_write : std_logic;
     signal event_mac   : std_logic;
+    signal perf_total_cycles        : unsigned(63 downto 0);
+    signal perf_load_cycles         : unsigned(63 downto 0);
+    signal perf_compute_cycles      : unsigned(63 downto 0);
+    signal perf_store_cycles        : unsigned(63 downto 0);
+    signal perf_num_tiles_processed : unsigned(63 downto 0);
+    signal perf_num_mac_ops_issued  : unsigned(63 downto 0);
 
     function a_value(row_idx : natural; col_idx : natural) return integer is
     begin
@@ -84,17 +95,20 @@ begin
 
     ctrl_active <= busy or start;
 
-    mem_req     <= ctrl_req when ctrl_active = '1' else host_req;
-    mem_we      <= ctrl_we when ctrl_active = '1' else host_we;
-    mem_addr    <= ctrl_addr when ctrl_active = '1' else host_addr;
-    mem_wdata   <= ctrl_wdata when ctrl_active = '1' else host_wdata;
-    mem_byte_en <= ctrl_byte_en when ctrl_active = '1' else (others => '1');
+    mem_rd_req  <= ctrl_rd_req when ctrl_active = '1' else host_rd_req;
+    mem_rd_addr <= ctrl_rd_addr when ctrl_active = '1' else host_rd_addr;
+    mem_wr_req  <= ctrl_wr_req when ctrl_active = '1' else host_wr_req;
+    mem_wr_addr <= ctrl_wr_addr when ctrl_active = '1' else host_wr_addr;
+    mem_wr_data <= ctrl_wr_data when ctrl_active = '1' else host_wr_data;
 
-    ctrl_ready  <= mem_ready when ctrl_active = '1' else '0';
-    ctrl_rvalid <= mem_rvalid when ctrl_active = '1' else '0';
-    ctrl_rdata  <= mem_rdata;
-    host_rvalid <= mem_rvalid when ctrl_active = '0' else '0';
-    host_rdata  <= mem_rdata;
+    ctrl_rd_ready <= mem_rd_ready when ctrl_active = '1' else '0';
+    ctrl_rd_valid <= mem_rd_valid when ctrl_active = '1' else '0';
+    ctrl_rd_data  <= mem_rd_data;
+    ctrl_wr_ready <= mem_wr_ready when ctrl_active = '1' else '0';
+    ctrl_sdram_busy <= mem_busy when ctrl_active = '1' else '1';
+
+    host_rd_valid <= mem_rd_valid when ctrl_active = '0' else '0';
+    host_rd_data  <= mem_rd_data;
 
     u_controller : entity work.accelerator_controller
         generic map (
@@ -112,36 +126,48 @@ begin
             start             => start,
             busy              => busy,
             done              => done,
-            sdram_req         => ctrl_req,
-            sdram_we          => ctrl_we,
-            sdram_addr        => ctrl_addr,
-            sdram_wdata       => ctrl_wdata,
-            sdram_byte_en     => ctrl_byte_en,
-            sdram_ready       => ctrl_ready,
-            sdram_rvalid      => ctrl_rvalid,
-            sdram_rdata       => ctrl_rdata,
+            sdram_rd_req      => ctrl_rd_req,
+            sdram_rd_addr     => ctrl_rd_addr,
+            sdram_rd_data     => ctrl_rd_data,
+            sdram_rd_valid    => ctrl_rd_valid,
+            sdram_rd_ready    => ctrl_rd_ready,
+            sdram_wr_req      => ctrl_wr_req,
+            sdram_wr_addr     => ctrl_wr_addr,
+            sdram_wr_data     => ctrl_wr_data,
+            sdram_wr_ready    => ctrl_wr_ready,
+            sdram_busy        => ctrl_sdram_busy,
             event_sdram_read  => event_read,
             event_sdram_write => event_write,
-            event_mac_group   => event_mac
+            event_mac_group   => event_mac,
+            perf_total_cycles        => perf_total_cycles,
+            perf_load_cycles         => perf_load_cycles,
+            perf_compute_cycles      => perf_compute_cycles,
+            perf_store_cycles        => perf_store_cycles,
+            perf_num_tiles_processed => perf_num_tiles_processed,
+            perf_num_mac_ops_issued  => perf_num_mac_ops_issued
         );
 
     u_mem : entity work.sdram_model
         generic map (
-            DATA_WIDTH => SDRAM_DATA_WIDTH,
-            ADDR_WIDTH => SDRAM_ADDR_WIDTH,
-            DEPTH      => 256
+            DATA_WIDTH    => SDRAM_DATA_WIDTH,
+            ADDR_WIDTH    => SDRAM_ADDR_WIDTH,
+            READ_LATENCY  => 1,
+            WRITE_LATENCY => 1,
+            DEPTH         => 256
         )
         port map (
-            clk     => clk,
-            rst     => rst,
-            req     => mem_req,
-            we      => mem_we,
-            addr    => mem_addr,
-            wdata   => mem_wdata,
-            byte_en => mem_byte_en,
-            ready   => mem_ready,
-            rvalid  => mem_rvalid,
-            rdata   => mem_rdata
+            clk      => clk,
+            rst      => rst,
+            rd_req   => mem_rd_req,
+            rd_addr  => mem_rd_addr,
+            rd_data  => mem_rd_data,
+            rd_valid => mem_rd_valid,
+            rd_ready => mem_rd_ready,
+            wr_req   => mem_wr_req,
+            wr_addr  => mem_wr_addr,
+            wr_data  => mem_wr_data,
+            wr_ready => mem_wr_ready,
+            busy     => mem_busy
         );
 
     stim_proc : process
@@ -156,23 +182,26 @@ begin
         for row_idx in 0 to N-1 loop
             for col_idx in 0 to N-1 loop
                 addr := row_idx * N + col_idx;
-                host_addr  <= to_unsigned(A_BASE + addr, SDRAM_ADDR_WIDTH);
-                host_wdata <= std_logic_vector(to_signed(a_value(row_idx, col_idx), SDRAM_DATA_WIDTH));
-                host_we    <= '1';
-                host_req   <= '1';
-                wait until rising_edge(clk);
-                host_req <= '0';
-                host_we  <= '0';
-                wait until rising_edge(clk);
 
-                host_addr  <= to_unsigned(B_BASE + addr, SDRAM_ADDR_WIDTH);
-                host_wdata <= std_logic_vector(to_signed(b_value(row_idx, col_idx), SDRAM_DATA_WIDTH));
-                host_we    <= '1';
-                host_req   <= '1';
+                host_wr_addr <= to_unsigned(A_BASE + addr, SDRAM_ADDR_WIDTH);
+                host_wr_data <= std_logic_vector(to_signed(a_value(row_idx, col_idx), SDRAM_DATA_WIDTH));
+                host_wr_req  <= '1';
                 wait until rising_edge(clk);
-                host_req <= '0';
-                host_we  <= '0';
+                host_wr_req <= '0';
+                loop
+                    wait until rising_edge(clk);
+                    exit when mem_wr_ready = '1';
+                end loop;
+
+                host_wr_addr <= to_unsigned(B_BASE + addr, SDRAM_ADDR_WIDTH);
+                host_wr_data <= std_logic_vector(to_signed(b_value(row_idx, col_idx), SDRAM_DATA_WIDTH));
+                host_wr_req  <= '1';
                 wait until rising_edge(clk);
+                host_wr_req <= '0';
+                loop
+                    wait until rising_edge(clk);
+                    exit when mem_wr_ready = '1';
+                end loop;
             end loop;
         end loop;
 
@@ -192,17 +221,44 @@ begin
 
         report "Ciclos de execucao: " & integer'image(exec_cycles) severity note;
 
+        assert perf_total_cycles > 0
+            report "perf_total_cycles nao foi atualizado."
+            severity failure;
+
+        assert perf_load_cycles > 0
+            report "perf_load_cycles nao foi atualizado."
+            severity failure;
+
+        assert perf_compute_cycles > 0
+            report "perf_compute_cycles nao foi atualizado."
+            severity failure;
+
+        assert perf_store_cycles > 0
+            report "perf_store_cycles nao foi atualizado."
+            severity failure;
+
+        assert perf_num_tiles_processed = to_unsigned((N / TILE_SIZE) * (N / TILE_SIZE), 64)
+            report "perf_num_tiles_processed incorreto."
+            severity failure;
+
+        assert perf_num_mac_ops_issued = to_unsigned(N * N * N, 64)
+            report "perf_num_mac_ops_issued incorreto."
+            severity failure;
+
         for row_idx in 0 to N-1 loop
             for col_idx in 0 to N-1 loop
                 addr := row_idx * N + col_idx;
-                host_addr <= to_unsigned(C_BASE + addr, SDRAM_ADDR_WIDTH);
-                host_we   <= '0';
-                host_req  <= '1';
+                host_rd_addr <= to_unsigned(C_BASE + addr, SDRAM_ADDR_WIDTH);
+                host_rd_req  <= '1';
                 wait until rising_edge(clk);
-                host_req <= '0';
-                wait for 1 ns;
+                host_rd_req <= '0';
 
-                assert host_rvalid = '1' and signed(host_rdata) = to_signed(c_expected(row_idx, col_idx), SDRAM_DATA_WIDTH)
+                loop
+                    wait until rising_edge(clk);
+                    exit when host_rd_valid = '1';
+                end loop;
+
+                assert signed(host_rd_data) = to_signed(c_expected(row_idx, col_idx), SDRAM_DATA_WIDTH)
                     report "Resultado incorreto no accelerator_controller."
                     severity failure;
             end loop;

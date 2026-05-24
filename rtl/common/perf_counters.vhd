@@ -10,63 +10,92 @@ entity perf_counters is
         clk : in std_logic;
         rst : in std_logic;
 
-        clear  : in std_logic;
-        enable : in std_logic;
+        start_count : in std_logic;
+        stop_count  : in std_logic;
 
-        event_sdram_read  : in std_logic;
-        event_sdram_write : in std_logic;
-        event_mac_group   : in std_logic;
+        load_active    : in std_logic;
+        compute_active : in std_logic;
+        store_active   : in std_logic;
 
-        cycle_count       : out unsigned(COUNTER_WIDTH-1 downto 0);
-        sdram_read_count  : out unsigned(COUNTER_WIDTH-1 downto 0);
-        sdram_write_count : out unsigned(COUNTER_WIDTH-1 downto 0);
-        mac_group_count   : out unsigned(COUNTER_WIDTH-1 downto 0)
+        tile_done      : in std_logic;
+        mac_ops_issued : in unsigned(COUNTER_WIDTH-1 downto 0);
+
+        total_cycles          : out unsigned(COUNTER_WIDTH-1 downto 0);
+        load_cycles           : out unsigned(COUNTER_WIDTH-1 downto 0);
+        compute_cycles        : out unsigned(COUNTER_WIDTH-1 downto 0);
+        store_cycles          : out unsigned(COUNTER_WIDTH-1 downto 0);
+        num_tiles_processed   : out unsigned(COUNTER_WIDTH-1 downto 0);
+        num_mac_ops_issued    : out unsigned(COUNTER_WIDTH-1 downto 0)
     );
 end entity perf_counters;
 
 architecture rtl of perf_counters is
 
-    signal cycles_reg       : unsigned(COUNTER_WIDTH-1 downto 0) := (others => '0');
-    signal sdram_reads_reg  : unsigned(COUNTER_WIDTH-1 downto 0) := (others => '0');
-    signal sdram_writes_reg : unsigned(COUNTER_WIDTH-1 downto 0) := (others => '0');
-    signal mac_groups_reg   : unsigned(COUNTER_WIDTH-1 downto 0) := (others => '0');
+    signal running_reg : std_logic := '0';
+
+    signal total_cycles_reg        : unsigned(COUNTER_WIDTH-1 downto 0) := (others => '0');
+    signal load_cycles_reg         : unsigned(COUNTER_WIDTH-1 downto 0) := (others => '0');
+    signal compute_cycles_reg      : unsigned(COUNTER_WIDTH-1 downto 0) := (others => '0');
+    signal store_cycles_reg        : unsigned(COUNTER_WIDTH-1 downto 0) := (others => '0');
+    signal tiles_processed_reg     : unsigned(COUNTER_WIDTH-1 downto 0) := (others => '0');
+    signal mac_ops_issued_reg      : unsigned(COUNTER_WIDTH-1 downto 0) := (others => '0');
 
 begin
 
-    cycle_count       <= cycles_reg;
-    sdram_read_count  <= sdram_reads_reg;
-    sdram_write_count <= sdram_writes_reg;
-    mac_group_count   <= mac_groups_reg;
+    total_cycles        <= total_cycles_reg;
+    load_cycles         <= load_cycles_reg;
+    compute_cycles      <= compute_cycles_reg;
+    store_cycles        <= store_cycles_reg;
+    num_tiles_processed <= tiles_processed_reg;
+    num_mac_ops_issued  <= mac_ops_issued_reg;
 
     process(clk, rst)
     begin
         if rst = '1' then
-            cycles_reg       <= (others => '0');
-            sdram_reads_reg  <= (others => '0');
-            sdram_writes_reg <= (others => '0');
-            mac_groups_reg   <= (others => '0');
+            running_reg          <= '0';
+            total_cycles_reg     <= (others => '0');
+            load_cycles_reg      <= (others => '0');
+            compute_cycles_reg   <= (others => '0');
+            store_cycles_reg     <= (others => '0');
+            tiles_processed_reg  <= (others => '0');
+            mac_ops_issued_reg   <= (others => '0');
 
         elsif rising_edge(clk) then
-            if clear = '1' then
-                cycles_reg       <= (others => '0');
-                sdram_reads_reg  <= (others => '0');
-                sdram_writes_reg <= (others => '0');
-                mac_groups_reg   <= (others => '0');
+            if start_count = '1' then
+                running_reg          <= '1';
+                total_cycles_reg     <= (others => '0');
+                load_cycles_reg      <= (others => '0');
+                compute_cycles_reg   <= (others => '0');
+                store_cycles_reg     <= (others => '0');
+                tiles_processed_reg  <= (others => '0');
+                mac_ops_issued_reg   <= (others => '0');
             else
-                if enable = '1' then
-                    cycles_reg <= cycles_reg + 1;
+                if running_reg = '1' then
+                    total_cycles_reg <= total_cycles_reg + 1;
+
+                    if load_active = '1' then
+                        load_cycles_reg <= load_cycles_reg + 1;
+                    end if;
+
+                    if compute_active = '1' then
+                        compute_cycles_reg <= compute_cycles_reg + 1;
+                    end if;
+
+                    if store_active = '1' then
+                        store_cycles_reg <= store_cycles_reg + 1;
+                    end if;
+
+                    if tile_done = '1' then
+                        tiles_processed_reg <= tiles_processed_reg + 1;
+                    end if;
+
+                    if mac_ops_issued /= 0 then
+                        mac_ops_issued_reg <= mac_ops_issued_reg + mac_ops_issued;
+                    end if;
                 end if;
 
-                if event_sdram_read = '1' then
-                    sdram_reads_reg <= sdram_reads_reg + 1;
-                end if;
-
-                if event_sdram_write = '1' then
-                    sdram_writes_reg <= sdram_writes_reg + 1;
-                end if;
-
-                if event_mac_group = '1' then
-                    mac_groups_reg <= mac_groups_reg + 1;
+                if stop_count = '1' then
+                    running_reg <= '0';
                 end if;
             end if;
         end if;

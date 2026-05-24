@@ -164,12 +164,36 @@ function Get-ParameterConnectivity {
     foreach ($key in $RunConfig.Keys) {
         if ($key -notin $connected -and $key -notin $metadata) {
             $warnings += "Parametro '$key' nao foi reconhecido pelo fluxo; sera mantido como metadado."
-        } elseif ($key -in $metadata -and $key -notin @("TOP_ENTITY", "top_entity")) {
-            $warnings += "Parametro '$key' ainda nao esta conectado ao RTL atual; sera tratado como metadado."
         }
     }
 
     return $warnings
+}
+
+function Get-MetadataOnlyKeys {
+    param(
+        [hashtable]$Defaults,
+        [array]$Sweep
+    )
+
+    $metadata = @("MEM_TYPE", "mem_type", "DATAFLOW", "dataflow", "BUFFERING_MODE", "buffering_mode", "MEMORY_BURST_LEN", "memory_burst_len", "MAC_PIPELINE_STAGES", "mac_pipeline_stages", "MEMORY_BANKS_A", "memory_banks_a", "MEMORY_BANKS_B", "memory_banks_b")
+    $present = New-Object System.Collections.Generic.HashSet[string]
+
+    foreach ($key in $Defaults.Keys) {
+        if ($key -in $metadata) {
+            [void]$present.Add($key)
+        }
+    }
+
+    foreach ($sweepItem in $Sweep) {
+        foreach ($property in $sweepItem.PSObject.Properties) {
+            if ($property.Name -in $metadata) {
+                [void]$present.Add($property.Name)
+            }
+        }
+    }
+
+    return @($present)
 }
 
 function New-BoardWrapper {
@@ -406,6 +430,11 @@ Write-Host "Experimento: $experimentName"
 Write-Host "Config: $configPathAbs"
 Write-Host "Resultados: $resultsDir"
 
+$metadataOnlyKeys = Get-MetadataOnlyKeys -Defaults $defaults -Sweep $sweep
+if ($metadataOnlyKeys.Count -gt 0) {
+    Write-Warning ("Parametros ainda tratados como metadado neste RTL: " + (($metadataOnlyKeys | Sort-Object) -join ", "))
+}
+
 $runIndex = 1
 foreach ($sweepItem in $sweep) {
     if ($RunLimit -gt 0 -and $runIndex -gt $RunLimit) {
@@ -471,7 +500,7 @@ foreach ($sweepItem in $sweep) {
             "-File",
             (Join-Path $projectRoot "run_testbenchs.ps1"),
             "-Only",
-            "tb_matrix_mult_tiled_core",
+            "tb_matrix_mult_tiled_core_perf",
             "-N",
             $nValue,
             "-TileSize",

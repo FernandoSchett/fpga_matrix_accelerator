@@ -206,7 +206,7 @@ function Invoke-Testbench {
     Invoke-VhdlCompilation -Sources $sources -Vcom $vcom
 
     $genericArgs = @()
-    if ($Entity -eq "tb_matrix_mult_tiled_core") {
+    if ($Entity -eq "tb_matrix_mult_tiled_core" -or $Entity -eq "tb_matrix_mult_tiled_core_perf") {
         if ($N -gt 0) { $genericArgs += "-gN=$N" }
         if ($TileSize -gt 0) { $genericArgs += "-gTILE_SIZE=$TileSize" }
         if ($NumMacs -gt 0) { $genericArgs += "-gNUM_MACS=$NumMacs" }
@@ -236,6 +236,7 @@ function Invoke-Testbench {
 
 $tests = @(
     "tb_matrix_mult_tiled_core",
+    "tb_matrix_mult_tiled_core_perf",
     "tb_tile_compute_engine",
     "tb_perf_counters",
     "tb_command_interface",

@@ -1,122 +1,110 @@
-# FPGA Matrix Accelerator
+# FPGA Matrix Accelerator em VHDL
 
-Acelerador VHDL para multiplicacao densa de matrizes inteiras na DE0-CV / Cyclone V `5CEBA4F23C7`.
+Projeto de implementacao e avaliacao de um acelerador de multiplicacao densa de matrizes em FPGA, usando VHDL no Quartus para a DE0-CV / Cyclone V `5CEBA4F23C7`.
 
-## About
+O acelerador calcula:
 
-Projeto academico para estudar custo, desempenho e eficiencia de um acelerador `C = A x B` com entradas inteiras e acumulacao inteira.
+```text
+C = A x B
+```
 
-- Curso: `<coloque-o-nome-do-curso-aqui>`
-- Apresentacao Overleaf: `<coloque-o-link-aqui>`
-- Relatorio tecnico: `<coloque-o-link-aqui>`
+A configuracao principal usa matrizes `N x N`, entradas inteiras `INT8`, acumulacao `INT32`, RAM interna M10K inferida, UART com FIFO e instrumentacao por LEDs/SignalTap. O objetivo e comparar configuracoes arquiteturais variando `TILE_SIZE`, `NUM_MACS` e outros parametros de experimento.
 
-## Primeiro Passo
+Relatorio em desenvolvimento: [Overleaf](<coloque-o-link-aqui>).
 
-Este repositorio usa submodulo para o host Python. Depois de clonar:
+Relatorio tecnico: [PDF/Docs](<coloque-o-link-aqui>).
+
+## Primeiro Uso
+
+O host Python fica em submodulo. Depois de clonar:
 
 ```powershell
 git submodule update --init --recursive
 ```
 
-## Arquitetura Atual
+## Estrutura
 
-- Top de sintese: `matrix_accelerator_full_top`
-- Core parametrizavel: `matrix_mult_tiled_core`
-- Generics conectados ao RTL: `N`, `TILE_SIZE`, `NUM_MACS`, `DATA_WIDTH`, `ACC_WIDTH`
-- Memoria: RAM interna inferida em M10K para A, B e C
-- Interface: UART com FIFO `SCFIFO`
-- Debug: SignalTap HDL wrapper
-- Visual: `LEDR[9:0]` e `HEX5..HEX0` mostrando `SIGMAX` durante execucao
-
-## Pastas
-
-- `rtl/common/`: pacotes, contadores, LEDs de status e display `SIGMAX`.
-- `rtl/compute/`: MAC, compute core e core tiled.
-- `rtl/memory/`: RAM interna inferivel.
-- `rtl/control/`: protocolo de comandos do acelerador.
-- `rtl/uart/`: UART RX/TX e FIFO UART.
+- `rtl/common/`: pacotes, contadores de desempenho, LEDs de status e display `SIGMAX`.
+- `rtl/compute/`: MAC, compute core e multiplicador tiled.
+- `rtl/memory/`: RAM interna inferivel para A, B e C.
+- `rtl/control/`: interface de comandos do acelerador.
+- `rtl/uart/`: UART RX/TX e FIFO `SCFIFO`.
 - `rtl/debug/`: wrapper SignalTap.
-- `rtl/top/`: top-level da placa.
-- `testes/`: testbenches e runner.
-- `py_matrix_host/`: submodulo Python para matriz/golden model/UART.
-- `parameter_optimization/`: varredura de parametros, coleta, analise e graficos.
+- `rtl/top/matrix_accelerator_full_top.vhd`: top-level da placa.
+- `testes/`: testbenches e script para simulacao.
+- `py_matrix_host/`: submodulo Python para golden model, UART e validacao.
+- `parameter_optimization/`: experimentos, coleta, analise e graficos.
 
-## Testes
+## Scripts
+
+- `run_testbenchs.ps1`: roda os testbenches VHDL.
+- `run_all_experiments.ps1`: atalho para rodar experimentos arquiteturais.
+- `parameter_optimization/run_sdram_arch_experiments.ps1`: executa uma fase de sweep a partir de JSON.
+- `parameter_optimization/parse_quartus_reports.py`: extrai recursos, Fmax e dados dos relatorios Quartus.
+- `parameter_optimization/collect_results.py`: consolida runs em CSV e JSON.
+- `parameter_optimization/analysis/run_analysis.py`: gera graficos e relatorio de analise.
+- `py_matrix_host/main.py`: gera matrizes, golden model e fluxo UART/dry-run.
+
+## Como Rodar
 
 Rodar todos os testbenches:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\run_testbenchs.ps1
+.\run_testbenchs.ps1
 ```
 
-Rodar apenas um testbench:
+Rodar um testbench parametrizado:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\run_testbenchs.ps1 -Only tb_matrix_mult_tiled_core
+.\run_testbenchs.ps1 -Only tb_matrix_mult_tiled_core -N 8 -TileSize 4 -NumMacs 4
 ```
 
-Rodar com parametros:
+Medir apenas ciclos de execucao, sem carregar/conferir toda a matriz:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\run_testbenchs.ps1 -Only tb_matrix_mult_tiled_core -N 8 -TileSize 4 -NumMacs 4
+.\run_testbenchs.ps1 -Only tb_matrix_mult_tiled_core_perf -N 128 -TileSize 2 -NumMacs 1
 ```
 
-## Quartus
-
-Compilar o projeto principal:
+Compilar no Quartus:
 
 ```powershell
 C:\altera_lite\25.1std\quartus\bin64\quartus_sh.exe --flow compile fpga_matrix_accelerator -c fpga_matrix_accelerator
 ```
 
-O arquivo principal e `fpga_matrix_accelerator.qsf`. Os pinos de UART (`uart_rx_i`, `uart_tx_o`) precisam ser definidos conforme o conector/adaptador usado na placa.
-
-## Parameter Optimization
-
-Tudo do fluxo de experimentos fica em `parameter_optimization/`. Nada deve ser salvo em `results/` na raiz.
-
-Configuracoes:
-
-- `parameter_optimization/configs/01_compute_sweep.json`: varia `tile_size` e `num_macs`.
-- `parameter_optimization/configs/02_memory_sweep.json`: varia parametros de memoria como metadados.
-- `parameter_optimization/configs/03_timing_sweep.json`: varia pipeline/bancos como metadados.
-- `parameter_optimization/configs/04_precision_sweep.json`: varia `DATA_WIDTH` e `ACC_WIDTH`.
-
-Rodar uma fase:
+Rodar o sweep principal:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\parameter_optimization\run_sdram_arch_experiments.ps1 -ConfigPath .\parameter_optimization\configs\01_compute_sweep.json
+.\parameter_optimization\run_sdram_arch_experiments.ps1 -ConfigPath .\parameter_optimization\configs\01_compute_sweep.json
 ```
 
 Rodar pelo atalho da raiz:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\run_all_experiments.ps1 -ConfigPath .\parameter_optimization\configs\01_compute_sweep.json
+.\run_all_experiments.ps1 -ConfigPath .\parameter_optimization\configs\01_compute_sweep.json
 ```
 
-Coletar resultados manualmente:
+Gerar matrizes e golden model:
 
 ```powershell
-python .\parameter_optimization\collect_results.py --runs-dir .\parameter_optimization\results\01_compute_sweep\runs --output-csv .\parameter_optimization\results\01_compute_sweep\experiment_results.csv
+python .\py_matrix_host\main.py generate --n 128 --data-width 8 --acc-width 32 --output-dir .\py_matrix_host\matrix
 ```
 
-Gerar analise e graficos:
+Rodar host em dry-run:
 
 ```powershell
-python .\parameter_optimization\analysis\run_analysis.py --experiment-dir .\parameter_optimization\results\01_compute_sweep
+python .\py_matrix_host\main.py uart --dry-run --input .\py_matrix_host\matrix\matrix_inputs.txt --expected .\py_matrix_host\matrix\matrix_expected.txt
 ```
 
-Saidas principais:
+## Parameter Optimization
 
-- `parameter_optimization/results/<experiment_name>/experiment_results.csv`
-- `parameter_optimization/results/<experiment_name>/experiment_summary.json`
-- `parameter_optimization/results/<experiment_name>/resource_speed_analysis.json`
-- `parameter_optimization/results/<experiment_name>/analysis_report.md`
-- `parameter_optimization/results/<experiment_name>/plots/`
+Configuracoes:
 
-## Parametros
+- `configs/01_compute_sweep.json`: varia `tile_size` e `num_macs`.
+- `configs/02_memory_sweep.json`: varia parametros de memoria.
+- `configs/03_timing_sweep.json`: varia parametros de timing/roteamento.
+- `configs/04_precision_sweep.json`: varia `DATA_WIDTH` e `ACC_WIDTH`.
 
-Conectados ao VHDL hoje:
+Parametros conectados ao RTL atual:
 
 - `N`
 - `TILE_SIZE`
@@ -124,7 +112,7 @@ Conectados ao VHDL hoje:
 - `DATA_WIDTH`
 - `ACC_WIDTH`
 
-Apenas metadados/configuracao por enquanto:
+Parametros ainda tratados como metadados:
 
 - `MEM_TYPE`
 - `DATAFLOW`
@@ -134,3 +122,30 @@ Apenas metadados/configuracao por enquanto:
 - `MEMORY_BANKS_A`
 - `MEMORY_BANKS_B`
 
+## Saidas
+
+- `output_files/`: relatorios e bitstream gerados pelo Quartus.
+- `parameter_optimization/results/<experiment_name>/runs/`: dados individuais de cada run.
+- `parameter_optimization/results/<experiment_name>/experiment_results.csv`: CSV consolidado.
+- `parameter_optimization/results/<experiment_name>/experiment_summary.json`: resumo do experimento.
+- `parameter_optimization/results/<experiment_name>/resource_speed_analysis.json`: analise de recursos e desempenho.
+- `parameter_optimization/results/<experiment_name>/analysis_report.md`: relatorio automatico.
+- `parameter_optimization/results/<experiment_name>/plots/`: graficos em PNG/SVG.
+
+## Metricas Principais
+
+- `fmax_mhz`: frequencia maxima estimada pelo Quartus.
+- `exec_cycles`: ciclos medidos pelo testbench.
+- `gops_eff_exact`: GOPS efetivo usando contagem exata de operacoes.
+- `gops_eff_approx`: GOPS efetivo usando aproximacao `2 x N^3`.
+- `gops_peak`: pico teorico baseado em `NUM_MACS` e `fmax_mhz`.
+- `peak_efficiency`: eficiencia em relacao ao pico teorico.
+- `resource_pressure_pct`: pressao maxima entre ALMs, DSPs, memoria e pinos.
+- `routing_pressure_score`: indicador heuristico de risco de roteamento.
+- `performance_per_resource_score`: desempenho normalizado por pressao de recurso.
+
+## Observacoes
+
+- A UART fisica ainda depende do pin assignment do adaptador usado.
+- Os displays `HEX5..HEX0` mostram `SIGMAX` enquanto o acelerador esta ocupado.
+- `LEDR` mostra heartbeat, busy, compute, progresso, done e erro.

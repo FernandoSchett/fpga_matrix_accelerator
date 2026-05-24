@@ -1,0 +1,27 @@
+{
+  "defaults": {
+    "N": 128,
+    "DATA_WIDTH": 8,
+    "ACC_WIDTH": 32,
+    "MEM_TYPE": "external_sdram_with_internal_tile_buffers",
+    "DATAFLOW": "output_stationary",
+    "BUFFERING_MODE": "single",
+    "MAC_PIPELINE_STAGES": null,
+    "MEMORY_BANKS_A": 1,
+    "MEMORY_BANKS_B": 1,
+    "MEMORY_BURST_LEN": null,
+    "TOP_ENTITY": "matrix_accelerator_sdram_core_top"
+  },
+  "sweep": [
+    { "tile_size": 2, "num_macs": 1 },
+    { "tile_size": 2, "num_macs": 2 },
+    { "tile_size": 2, "num_macs": 4 },
+    { "tile_size": 4, "num_macs": 1 },
+    { "tile_size": 4, "num_macs": 2 },
+    { "tile_size": 4, "num_macs": 4 },
+    { "tile_size": 8, "num_macs": 4 },
+    { "tile_size": 8, "num_macs": 8 }
+  ],
+  "memory_burst_len_candidates": [1, 4, 8, 16],
+  "memory_burst_len_policy": "Do not sweep MEMORY_BURST_LEN in the first pass. Use it only after selecting the best one or two TILE_SIZE x NUM_MACS configurations."
+}

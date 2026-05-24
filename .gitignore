@@ -22,6 +22,7 @@ simulation/
 modelsim/
 work/
 experiments/results/
+results/
 graficos_uteis/
 .venv/
 dados_pre_processados/

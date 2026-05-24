@@ -1,6 +1,6 @@
 {
   "experiment_name": "04_precision_sweep",
-  "description": "Sweep opcional de precisao; nao usar para comparar diretamente com o sweep principal",
+  "description": "Sweep opcional de precisao inteira. Avalia impacto de DATA_WIDTH e ACC_WIDTH no uso de DSPs, ALMs, memoria, Fmax e GOPS. Nao comparar diretamente com o sweep principal sem considerar diferenca de precisao.",
   "defaults": {
     "N": 128,
     "tile_size": 8,
@@ -14,9 +14,23 @@
     "TOP_ENTITY": "matrix_accelerator_full_top"
   },
   "sweep": [
+    { "DATA_WIDTH": 4,  "ACC_WIDTH": 16, "num_macs": 32 },
+    { "DATA_WIDTH": 4,  "ACC_WIDTH": 16, "num_macs": 64 },
+
     { "DATA_WIDTH": 8,  "ACC_WIDTH": 32, "num_macs": 32 },
+    { "DATA_WIDTH": 8,  "ACC_WIDTH": 32, "num_macs": 48 },
     { "DATA_WIDTH": 8,  "ACC_WIDTH": 32, "num_macs": 64 },
+
+    { "DATA_WIDTH": 12, "ACC_WIDTH": 32, "num_macs": 16 },
+    { "DATA_WIDTH": 12, "ACC_WIDTH": 32, "num_macs": 32 },
+    { "DATA_WIDTH": 12, "ACC_WIDTH": 32, "num_macs": 48 },
+
+    { "DATA_WIDTH": 16, "ACC_WIDTH": 40, "num_macs": 8  },
     { "DATA_WIDTH": 16, "ACC_WIDTH": 40, "num_macs": 16 },
-    { "DATA_WIDTH": 16, "ACC_WIDTH": 40, "num_macs": 32 }
+    { "DATA_WIDTH": 16, "ACC_WIDTH": 40, "num_macs": 32 },
+
+    { "DATA_WIDTH": 24, "ACC_WIDTH": 56, "num_macs": 4  },
+    { "DATA_WIDTH": 24, "ACC_WIDTH": 56, "num_macs": 8  },
+    { "DATA_WIDTH": 24, "ACC_WIDTH": 56, "num_macs": 16 }
   ]
 }

@@ -182,7 +182,7 @@ function Invoke-CapturedStep {
     return ($output -join [Environment]::NewLine)
 }
 
-function Compile-VhdlSources {
+function Invoke-VhdlCompilation {
     param(
         [string[]]$Sources,
         [string]$Vcom
@@ -348,7 +348,7 @@ function Invoke-Testbench {
     Invoke-Step -Command @($vlib, "work")
     Invoke-Step -Command @($vmap, "work", "work")
 
-    Compile-VhdlSources -Sources $sources -Vcom $vcom
+    Invoke-VhdlCompilation -Sources $sources -Vcom $vcom
 
     $vsimCommand = @($vsim, "-c", "-quiet") + $genericArgs + @(
         "work.$Entity",

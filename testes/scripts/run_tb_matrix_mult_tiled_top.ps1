@@ -9,16 +9,16 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $TestsDir = Split-Path -Parent $ScriptDir
 $Runner = Join-Path $TestsDir "run_testbenchs.ps1"
 
-$args = @{
+$testRunArgs = @{
     Only = "tb_matrix_mult_tiled_top"
 }
 
 if ($Quartus) {
-    $args.Quartus = $true
+    $testRunArgs.Quartus = $true
 }
 
 if ($QuartusFull) {
-    $args.QuartusFull = $true
+    $testRunArgs.QuartusFull = $true
 }
 
-& $Runner @args
+& $Runner @testRunArgs

@@ -40,6 +40,7 @@ function Find-Tool {
     )
 
     $command = Get-Command $Name -ErrorAction SilentlyContinue
+
     if ($null -ne $command) {
         return $command.Source
     }
@@ -51,21 +52,7 @@ function Find-Tool {
     throw "Ferramenta nao encontrada no PATH: $Name"
 }
 
-function Get-Clog2 {
-    param([int]$Value)
-
-    $result = 0
-    $limit = 1
-
-    while ($limit -lt $Value) {
-        $limit = $limit * 2
-        $result = $result + 1
-    }
-
-    return $result
-}
-
-function Convert-ReportNumber {
+function ConvertTo-ReportNumber {
     param([string]$Value)
 
     if ([string]::IsNullOrWhiteSpace($Value)) {
@@ -83,9 +70,15 @@ function Get-RegexValue {
     )
 
     foreach ($pattern in $Patterns) {
-        $match = [regex]::Match($Text, $pattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase -bor [System.Text.RegularExpressions.RegexOptions]::Multiline)
-        if ($match.Success) {
-            return $match.Groups[$Group].Value.Trim()
+        $regexMatch = [regex]::Match(
+            $Text,
+            $pattern,
+            [System.Text.RegularExpressions.RegexOptions]::IgnoreCase -bor
+            [System.Text.RegularExpressions.RegexOptions]::Multiline
+        )
+
+        if ($regexMatch.Success) {
+            return $regexMatch.Groups[$Group].Value.Trim()
         }
     }
 
@@ -99,27 +92,42 @@ function Get-ResourceTriple {
     )
 
     foreach ($pattern in $Patterns) {
-        $match = [regex]::Match($Text, $pattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase -bor [System.Text.RegularExpressions.RegexOptions]::Multiline)
-        if ($match.Success) {
+        $regexMatch = [regex]::Match(
+            $Text,
+            $pattern,
+            [System.Text.RegularExpressions.RegexOptions]::IgnoreCase -bor
+            [System.Text.RegularExpressions.RegexOptions]::Multiline
+        )
+
+        if ($regexMatch.Success) {
             return @{
-                Used  = Convert-ReportNumber $match.Groups[1].Value
-                Total = Convert-ReportNumber $match.Groups[2].Value
-                Pct   = Convert-ReportNumber $match.Groups[3].Value
+                Used  = ConvertTo-ReportNumber $regexMatch.Groups[1].Value
+                Total = ConvertTo-ReportNumber $regexMatch.Groups[2].Value
+                Pct   = ConvertTo-ReportNumber $regexMatch.Groups[3].Value
             }
         }
     }
 
-    return @{ Used = $null; Total = $null; Pct = $null }
+    return @{
+        Used  = $null
+        Total = $null
+        Pct   = $null
+    }
 }
 
 function Get-MaxMhz {
     param([string]$Text)
 
-    $matches = [regex]::Matches($Text, "([0-9]+(?:\.[0-9]+)?)\s*MHz", [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    $regexMatches = [regex]::Matches(
+        $Text,
+        "([0-9]+(?:\.[0-9]+)?)\s*MHz",
+        [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
+    )
+
     $max = $null
 
-    foreach ($match in $matches) {
-        $value = [double]$match.Groups[1].Value
+    foreach ($regexMatch in $regexMatches) {
+        $value = [double]$regexMatch.Groups[1].Value
 
         if ($null -eq $max -or $value -gt $max) {
             $max = $value
@@ -148,7 +156,14 @@ function Invoke-CapturedCommand {
             Set-Location $WorkingDirectory
         }
 
-        $output = & $Command[0] $Command[1..($Command.Count - 1)] 2>&1
+        $executable = $Command[0]
+        $commandArgs = @()
+
+        if ($Command.Count -gt 1) {
+            $commandArgs = $Command[1..($Command.Count - 1)]
+        }
+
+        $output = & $executable @commandArgs 2>&1
         $exitCode = $LASTEXITCODE
     }
     finally {
@@ -164,7 +179,7 @@ function Invoke-CapturedCommand {
     }
 }
 
-function Convert-ToQsfPath {
+function ConvertTo-QsfPath {
     param([string]$Path)
 
     return (Resolve-Path -LiteralPath $Path).Path.Replace("\", "/")
@@ -251,12 +266,12 @@ function New-ExperimentQsf {
         [string]$WrapperPath
     )
 
-    $pkgPath = Convert-ToQsfPath (Join-Path $ProjectDir "rtl\matrix_tiled\pkg\matrix_tiled_pkg.vhd")
-    $macPath = Convert-ToQsfPath (Join-Path $ProjectDir "rtl\matriz_4x4\blocks\mac_unit.vhd")
-    $ramPath = Convert-ToQsfPath (Join-Path $ProjectDir "rtl\matrix_tiled\memory\matrix_single_port_ram.vhd")
-    $corePath = Convert-ToQsfPath (Join-Path $ProjectDir "rtl\matrix_tiled\compute\matrix_tiled_compute_core.vhd")
-    $topPath = Convert-ToQsfPath (Join-Path $ProjectDir "rtl\matrix_tiled\matrix_mult_tiled_top.vhd")
-    $wrapperQsfPath = Convert-ToQsfPath $WrapperPath
+    $pkgPath = ConvertTo-QsfPath (Join-Path $ProjectDir "rtl\matrix_tiled\pkg\matrix_tiled_pkg.vhd")
+    $macPath = ConvertTo-QsfPath (Join-Path $ProjectDir "rtl\matriz_4x4\blocks\mac_unit.vhd")
+    $ramPath = ConvertTo-QsfPath (Join-Path $ProjectDir "rtl\matrix_tiled\memory\matrix_single_port_ram.vhd")
+    $corePath = ConvertTo-QsfPath (Join-Path $ProjectDir "rtl\matrix_tiled\compute\matrix_tiled_compute_core.vhd")
+    $topPath = ConvertTo-QsfPath (Join-Path $ProjectDir "rtl\matrix_tiled\matrix_mult_tiled_top.vhd")
+    $wrapperQsfPath = ConvertTo-QsfPath $WrapperPath
     $outputQsfPath = $OutputDirectory.Replace("\", "/")
 
     $content = @"
@@ -295,27 +310,35 @@ PROJECT_REVISION = "$ProjectRevision"
 function Read-QuartusReports {
     param([string]$RunDir)
 
-    $files = Get-ChildItem -LiteralPath $RunDir -Recurse -File -ErrorAction SilentlyContinue |
-        Where-Object { $_.Extension -in @(".rpt", ".summary") }
+    $reportFiles = Get-ChildItem -LiteralPath $RunDir -Recurse -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Extension -in @(".rpt", ".summary", ".sta", ".fit", ".map") }
 
-    if ($files.Count -eq 0) {
+    if ($reportFiles.Count -eq 0) {
         return ""
     }
 
-    return (($files | ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw }) -join [Environment]::NewLine)
+    return (($reportFiles | ForEach-Object {
+        Get-Content -LiteralPath $_.FullName -Raw
+    }) -join [Environment]::NewLine)
 }
 
 $quartusSh = $null
+
 if (-not $SkipQuartus) {
-    $quartusSh = Find-Tool -Name "quartus_sh" -FallbackPath "C:\altera_lite\25.1std\quartus\bin64\quartus_sh.exe"
+    $quartusSh = Find-Tool `
+        -Name "quartus_sh" `
+        -FallbackPath "C:\altera_lite\25.1std\quartus\bin64\quartus_sh.exe"
 }
 
 $rows = @()
+
 $tiledTestScriptCandidates = @(
     Join-Path $ProjectDir "testes\scripts\run_tb_matrix_mult_tiled_top.ps1",
     Join-Path $ProjectDir "testes\run_tb_matrix_mult_tiled_top.ps1"
 )
+
 $tiledTestScript = $null
+
 foreach ($candidate in $tiledTestScriptCandidates) {
     if (Test-Path -LiteralPath $candidate) {
         $tiledTestScript = $candidate
@@ -333,16 +356,21 @@ New-Item -ItemType Directory -Force -Path $baseOutputDir | Out-Null
 foreach ($config in $configs) {
     $tileSize = [int]$config.TileSize
     $numMacs = [int]$config.NumMacs
+
     $runId = "N${N}_T${tileSize}_M${numMacs}"
     $runIdLower = $runId.ToLower()
+
     $topEntity = "matrix_mult_tiled_top_$runIdLower"
     $runDir = Join-Path $baseOutputDir $runId
     $generatedDir = Join-Path $runDir "generated"
     $quartusOutDir = Join-Path $runDir "quartus_output"
+
     $wrapperPath = Join-Path $generatedDir "$topEntity.vhd"
     $quartusProject = "${ProjectName}_$runIdLower"
+
     $qpfPath = Join-Path $runDir "$quartusProject.qpf"
     $qsfPath = Join-Path $runDir "$quartusProject.qsf"
+
     $simLogPath = Join-Path $runDir "simulation.log"
     $quartusLogPath = Join-Path $runDir "quartus_compile.log"
 
@@ -352,11 +380,28 @@ foreach ($config in $configs) {
     Write-Host "============================================================"
 
     New-Item -ItemType Directory -Force -Path $runDir, $generatedDir, $quartusOutDir | Out-Null
-    New-ExperimentWrapper -Path $wrapperPath -EntityName $topEntity -N $N -TileSize $tileSize -NumMacs $numMacs -DataWidth $DataWidth -AccWidth $AccWidth
-    New-ExperimentQpf -Path $qpfPath -ProjectRevision $quartusProject
-    New-ExperimentQsf -Path $qsfPath -TopEntity $topEntity -OutputDirectory $quartusOutDir -WrapperPath $wrapperPath
+
+    New-ExperimentWrapper `
+        -Path $wrapperPath `
+        -EntityName $topEntity `
+        -N $N `
+        -TileSize $tileSize `
+        -NumMacs $numMacs `
+        -DataWidth $DataWidth `
+        -AccWidth $AccWidth
+
+    New-ExperimentQpf `
+        -Path $qpfPath `
+        -ProjectRevision $quartusProject
+
+    New-ExperimentQsf `
+        -Path $qsfPath `
+        -TopEntity $topEntity `
+        -OutputDirectory $quartusOutDir `
+        -WrapperPath $wrapperPath
 
     $execCycles = $null
+
     if (-not $SkipSimulation) {
         $simCommand = @(
             "powershell",
@@ -377,8 +422,13 @@ foreach ($config in $configs) {
             "$AccWidth"
         )
 
-        $simResult = Invoke-CapturedCommand -Command $simCommand -LogPath $simLogPath
-        $cyclesText = Get-RegexValue -Text $simResult.Text -Patterns @("Ciclos de execucao:\s*([0-9]+)")
+        $simResult = Invoke-CapturedCommand `
+            -Command $simCommand `
+            -LogPath $simLogPath
+
+        $cyclesText = Get-RegexValue `
+            -Text $simResult.Text `
+            -Patterns @("Ciclos de execucao:\s*([0-9]+)")
 
         if ($null -ne $cyclesText) {
             $execCycles = [double]$cyclesText
@@ -386,9 +436,19 @@ foreach ($config in $configs) {
     }
 
     $flowStatus = "skipped"
+
     if (-not $SkipQuartus) {
-        $quartusCommand = @($quartusSh, "--flow", "compile", $quartusProject)
-        $quartusResult = Invoke-CapturedCommand -Command $quartusCommand -LogPath $quartusLogPath -WorkingDirectory $runDir
+        $quartusCommand = @(
+            $quartusSh,
+            "--flow",
+            "compile",
+            $quartusProject
+        )
+
+        $quartusResult = Invoke-CapturedCommand `
+            -Command $quartusCommand `
+            -LogPath $quartusLogPath `
+            -WorkingDirectory $runDir
 
         if ($quartusResult.ExitCode -eq 0) {
             $flowStatus = "success"
@@ -398,47 +458,75 @@ foreach ($config in $configs) {
     }
 
     $reports = Read-QuartusReports -RunDir $runDir
-    $flowFromReport = Get-RegexValue -Text $reports -Patterns @("Flow Status\s*:\s*(.+)")
+
+    $flowFromReport = Get-RegexValue `
+        -Text $reports `
+        -Patterns @("Flow Status\s*:\s*(.+)")
+
     if ($null -ne $flowFromReport) {
         $flowStatus = $flowFromReport
     }
 
-    $alms = Get-ResourceTriple -Text $reports -Patterns @(
-        "Total\s+ALMs\s*:\s*([0-9,]+)\s*/\s*([0-9,]+)\s*\(\s*([0-9.]+)\s*%\s*\)",
-        "Adaptive\s+Logic\s+Modules.*?:\s*([0-9,]+)\s*/\s*([0-9,]+)\s*\(\s*([0-9.]+)\s*%\s*\)"
-    )
-    $pins = Get-ResourceTriple -Text $reports -Patterns @(
-        "Total\s+pins\s*:\s*([0-9,]+)\s*/\s*([0-9,]+)\s*\(\s*([0-9.]+)\s*%\s*\)"
-    )
-    $dsps = Get-ResourceTriple -Text $reports -Patterns @(
-        "Total\s+DSP\s+Blocks\s*:\s*([0-9,]+)\s*/\s*([0-9,]+)\s*\(\s*([0-9.]+)\s*%\s*\)",
-        "DSP\s+block.*?:\s*([0-9,]+)\s*/\s*([0-9,]+)\s*\(\s*([0-9.]+)\s*%\s*\)"
-    )
-    $memoryBits = Get-ResourceTriple -Text $reports -Patterns @(
-        "Total\s+block\s+memory\s+bits\s*:\s*([0-9,]+)\s*/\s*([0-9,]+)\s*\(\s*([0-9.]+)\s*%\s*\)",
-        "Block\s+memory\s+bits.*?:\s*([0-9,]+)\s*/\s*([0-9,]+)\s*\(\s*([0-9.]+)\s*%\s*\)"
-    )
+    $alms = Get-ResourceTriple `
+        -Text $reports `
+        -Patterns @(
+            "Total\s+ALMs\s*:\s*([0-9,]+)\s*/\s*([0-9,]+)\s*\(\s*([0-9.]+)\s*%\s*\)",
+            "Adaptive\s+Logic\s+Modules.*?:\s*([0-9,]+)\s*/\s*([0-9,]+)\s*\(\s*([0-9.]+)\s*%\s*\)"
+        )
 
-    $aluts = Convert-ReportNumber (Get-RegexValue -Text $reports -Patterns @(
-        "Combinational\s+ALUTs\s*:\s*([0-9,]+)",
-        "Total\s+combinational\s+functions\s*:\s*([0-9,]+)"
-    ))
-    $registers = Convert-ReportNumber (Get-RegexValue -Text $reports -Patterns @(
-        "Dedicated\s+logic\s+registers\s*:\s*([0-9,]+)",
-        "Total\s+registers\s*:\s*([0-9,]+)"
-    ))
+    $pins = Get-ResourceTriple `
+        -Text $reports `
+        -Patterns @(
+            "Total\s+pins\s*:\s*([0-9,]+)\s*/\s*([0-9,]+)\s*\(\s*([0-9.]+)\s*%\s*\)"
+        )
+
+    $dsps = Get-ResourceTriple `
+        -Text $reports `
+        -Patterns @(
+            "Total\s+DSP\s+Blocks\s*:\s*([0-9,]+)\s*/\s*([0-9,]+)\s*\(\s*([0-9.]+)\s*%\s*\)",
+            "DSP\s+block.*?:\s*([0-9,]+)\s*/\s*([0-9,]+)\s*\(\s*([0-9.]+)\s*%\s*\)"
+        )
+
+    $memoryBits = Get-ResourceTriple `
+        -Text $reports `
+        -Patterns @(
+            "Total\s+block\s+memory\s+bits\s*:\s*([0-9,]+)\s*/\s*([0-9,]+)\s*\(\s*([0-9.]+)\s*%\s*\)",
+            "Block\s+memory\s+bits.*?:\s*([0-9,]+)\s*/\s*([0-9,]+)\s*\(\s*([0-9.]+)\s*%\s*\)"
+        )
+
+    $aluts = ConvertTo-ReportNumber (Get-RegexValue `
+        -Text $reports `
+        -Patterns @(
+            "Combinational\s+ALUTs\s*:\s*([0-9,]+)",
+            "Total\s+combinational\s+functions\s*:\s*([0-9,]+)"
+        ))
+
+    $registers = ConvertTo-ReportNumber (Get-RegexValue `
+        -Text $reports `
+        -Patterns @(
+            "Dedicated\s+logic\s+registers\s*:\s*([0-9,]+)",
+            "Total\s+registers\s*:\s*([0-9,]+)"
+        ))
+
     $fmaxMhz = Get-MaxMhz -Text $reports
-    $maxFanout = Convert-ReportNumber (Get-RegexValue -Text $reports -Patterns @(
-        "Maximum\s+Fan-Out\s*:\s*([0-9.]+)",
-        "Max\s+fanout\s*:\s*([0-9.]+)"
-    ))
-    $avgFanout = Convert-ReportNumber (Get-RegexValue -Text $reports -Patterns @(
-        "Average\s+Fan-Out\s*:\s*([0-9.]+)",
-        "Avg\s+fanout\s*:\s*([0-9.]+)"
-    ))
+
+    $maxFanout = ConvertTo-ReportNumber (Get-RegexValue `
+        -Text $reports `
+        -Patterns @(
+            "Maximum\s+Fan-Out\s*:\s*([0-9.]+)",
+            "Max\s+fanout\s*:\s*([0-9.]+)"
+        ))
+
+    $avgFanout = ConvertTo-ReportNumber (Get-RegexValue `
+        -Text $reports `
+        -Patterns @(
+            "Average\s+Fan-Out\s*:\s*([0-9.]+)",
+            "Avg\s+fanout\s*:\s*([0-9.]+)"
+        ))
 
     $opsExact = ([double]$N * $N * $N) + ([double]$N * $N * ($N - 1))
     $opsApprox = 2.0 * [double]$N * $N * $N
+
     $execTimeUs = $null
     $gopsEffExact = $null
     $gopsEffApprox = $null
@@ -448,6 +536,7 @@ foreach ($config in $configs) {
     if ($null -ne $fmaxMhz -and $null -ne $execCycles -and $fmaxMhz -gt 0 -and $execCycles -gt 0) {
         $execTimeS = $execCycles / ($fmaxMhz * 1000000.0)
         $execTimeUs = $execTimeS * 1000000.0
+
         $gopsEffExact = $opsExact / $execTimeS / 1000000000.0
         $gopsEffApprox = $opsApprox / $execTimeS / 1000000000.0
         $gopsPeak = 2.0 * $numMacs * $fmaxMhz / 1000.0
@@ -458,40 +547,40 @@ foreach ($config in $configs) {
     }
 
     $rows += [pscustomobject][ordered]@{
-        run_id                 = $runId
-        top_entity             = $topEntity
-        N                      = $N
-        tile_size              = $tileSize
-        num_macs               = $numMacs
-        data_width             = $DataWidth
-        acc_width              = $AccWidth
-        mem_type               = $MemType
-        flow_status            = $flowStatus
-        alms                   = $alms.Used
-        alms_total             = $alms.Total
-        alms_pct               = $alms.Pct
-        aluts                  = $aluts
-        registers              = $registers
-        pins                   = $pins.Used
-        pins_total             = $pins.Total
-        pins_pct               = $pins.Pct
-        dsps                   = $dsps.Used
-        dsps_total             = $dsps.Total
-        dsps_pct               = $dsps.Pct
-        block_memory_bits      = $memoryBits.Used
+        run_id                  = $runId
+        top_entity              = $topEntity
+        N                       = $N
+        tile_size               = $tileSize
+        num_macs                = $numMacs
+        data_width              = $DataWidth
+        acc_width               = $AccWidth
+        mem_type                = $MemType
+        flow_status             = $flowStatus
+        alms                    = $alms.Used
+        alms_total              = $alms.Total
+        alms_pct                = $alms.Pct
+        aluts                   = $aluts
+        registers               = $registers
+        pins                    = $pins.Used
+        pins_total              = $pins.Total
+        pins_pct                = $pins.Pct
+        dsps                    = $dsps.Used
+        dsps_total              = $dsps.Total
+        dsps_pct                = $dsps.Pct
+        block_memory_bits       = $memoryBits.Used
         block_memory_bits_total = $memoryBits.Total
-        block_memory_bits_pct  = $memoryBits.Pct
-        fmax_mhz               = $fmaxMhz
-        exec_cycles            = $execCycles
-        ops_exact              = $opsExact
-        ops_approx_2n3         = $opsApprox
-        exec_time_us           = $execTimeUs
-        gops_eff_exact         = $gopsEffExact
-        gops_eff_approx        = $gopsEffApprox
-        gops_peak              = $gopsPeak
-        peak_efficiency        = $peakEfficiency
-        max_fanout             = $maxFanout
-        avg_fanout             = $avgFanout
+        block_memory_bits_pct   = $memoryBits.Pct
+        fmax_mhz                = $fmaxMhz
+        exec_cycles             = $execCycles
+        ops_exact               = $opsExact
+        ops_approx_2n3          = $opsApprox
+        exec_time_us            = $execTimeUs
+        gops_eff_exact          = $gopsEffExact
+        gops_eff_approx         = $gopsEffApprox
+        gops_peak               = $gopsPeak
+        peak_efficiency         = $peakEfficiency
+        max_fanout              = $maxFanout
+        avg_fanout              = $avgFanout
     }
 }
 

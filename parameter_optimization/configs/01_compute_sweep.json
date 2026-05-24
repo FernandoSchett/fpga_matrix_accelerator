@@ -1,0 +1,25 @@
+{
+  "experiment_name": "01_compute_sweep",
+  "description": "Sweep de tile_size e num_macs",
+  "defaults": {
+    "N": 128,
+    "DATA_WIDTH": 8,
+    "ACC_WIDTH": 32,
+    "MEM_TYPE": "internal_fpga_ram",
+    "DATAFLOW": "output_stationary",
+    "BUFFERING_MODE": "single",
+    "MAC_PIPELINE_STAGES": 0,
+    "MEMORY_BANKS_A": 1,
+    "MEMORY_BANKS_B": 1,
+    "MEMORY_BURST_LEN": null,
+    "TOP_ENTITY": "matrix_accelerator_full_top"
+  },
+  "sweep": [
+    { "tile_size": 2, "num_macs": 1 },
+    { "tile_size": 2, "num_macs": 2 },
+    { "tile_size": 4, "num_macs": 2 },
+    { "tile_size": 4, "num_macs": 4 },
+    { "tile_size": 8, "num_macs": 4 },
+    { "tile_size": 8, "num_macs": 8 }
+  ]
+}

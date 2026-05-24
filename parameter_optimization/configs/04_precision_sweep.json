@@ -1,0 +1,23 @@
+{
+  "experiment_name": "04_precision_sweep",
+  "description": "Sweep de precisao de dados",
+  "defaults": {
+    "N": 128,
+    "tile_size": 4,
+    "num_macs": 4,
+    "MEM_TYPE": "internal_fpga_ram",
+    "DATAFLOW": "output_stationary",
+    "BUFFERING_MODE": "single",
+    "MAC_PIPELINE_STAGES": 0,
+    "MEMORY_BANKS_A": 1,
+    "MEMORY_BANKS_B": 1,
+    "MEMORY_BURST_LEN": null,
+    "TOP_ENTITY": "matrix_accelerator_sdram_core_top"
+  },
+  "sweep": [
+    { "DATA_WIDTH": 8, "ACC_WIDTH": 32 },
+    { "DATA_WIDTH": 16, "ACC_WIDTH": 32 },
+    { "DATA_WIDTH": 16, "ACC_WIDTH": 48 },
+    { "DATA_WIDTH": 32, "ACC_WIDTH": 64 }
+  ]
+}

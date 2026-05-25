@@ -5,6 +5,10 @@ param(
     [int]$NumMacs = 0,
     [int]$DataWidth = 0,
     [int]$AccWidth = 0,
+    [int]$MemoryBurstLen = 0,
+    [int]$MacPipelineStages = -1,
+    [int]$MemoryBanksA = 0,
+    [int]$MemoryBanksB = 0,
     [int]$VsimRetryCount = 10,
     [int]$VsimRetrySeconds = 30,
     [switch]$Quartus,
@@ -248,6 +252,10 @@ function Invoke-Testbench {
         if ($NumMacs -gt 0) { $genericArgs += "-gNUM_MACS=$NumMacs" }
         if ($DataWidth -gt 0) { $genericArgs += "-gDATA_WIDTH=$DataWidth" }
         if ($AccWidth -gt 0) { $genericArgs += "-gACC_WIDTH=$AccWidth" }
+        if ($MemoryBurstLen -gt 0) { $genericArgs += "-gMEMORY_BURST_LEN=$MemoryBurstLen" }
+        if ($MacPipelineStages -ge 0) { $genericArgs += "-gMAC_PIPELINE_STAGES=$MacPipelineStages" }
+        if ($MemoryBanksA -gt 0) { $genericArgs += "-gMEMORY_BANKS_A=$MemoryBanksA" }
+        if ($MemoryBanksB -gt 0) { $genericArgs += "-gMEMORY_BANKS_B=$MemoryBanksB" }
     }
 
     $vsimCommand = @(

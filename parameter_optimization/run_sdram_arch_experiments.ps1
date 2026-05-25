@@ -120,6 +120,12 @@ function Get-ConfigValue {
     return $DefaultValue
 }
 
+function ConvertTo-VhdlStringLiteral {
+    param([string]$Value)
+
+    return '"' + $Value.Replace('"', '""') + '"'
+}
+
 function ConvertTo-ConfigHashtable {
     param($JsonObject)
 
@@ -166,8 +172,12 @@ function Get-RunName {
 function Get-ParameterConnectivity {
     param([hashtable]$RunConfig)
 
-    $connected = @("N", "TILE_SIZE", "tile_size", "NUM_MACS", "num_macs", "DATA_WIDTH", "data_width", "ACC_WIDTH", "acc_width")
-    $metadata = @("MEM_TYPE", "mem_type", "DATAFLOW", "dataflow", "BUFFERING_MODE", "buffering_mode", "MEMORY_BURST_LEN", "memory_burst_len", "MAC_PIPELINE_STAGES", "mac_pipeline_stages", "MEMORY_BANKS_A", "memory_banks_a", "MEMORY_BANKS_B", "memory_banks_b", "TOP_ENTITY", "top_entity")
+    $connected = @(
+        "N", "TILE_SIZE", "tile_size", "NUM_MACS", "num_macs", "DATA_WIDTH", "data_width", "ACC_WIDTH", "acc_width",
+        "MEM_TYPE", "mem_type", "DATAFLOW", "dataflow", "BUFFERING_MODE", "buffering_mode", "MEMORY_BURST_LEN", "memory_burst_len",
+        "MAC_PIPELINE_STAGES", "mac_pipeline_stages", "MEMORY_BANKS_A", "memory_banks_a", "MEMORY_BANKS_B", "memory_banks_b"
+    )
+    $metadata = @("TOP_ENTITY", "top_entity")
 
     $warnings = @()
     foreach ($key in $RunConfig.Keys) {
@@ -177,32 +187,6 @@ function Get-ParameterConnectivity {
     }
 
     return $warnings
-}
-
-function Get-MetadataOnlyKeys {
-    param(
-        [hashtable]$Defaults,
-        [array]$Sweep
-    )
-
-    $metadata = @("MEM_TYPE", "mem_type", "DATAFLOW", "dataflow", "BUFFERING_MODE", "buffering_mode", "MEMORY_BURST_LEN", "memory_burst_len", "MAC_PIPELINE_STAGES", "mac_pipeline_stages", "MEMORY_BANKS_A", "memory_banks_a", "MEMORY_BANKS_B", "memory_banks_b")
-    $present = New-Object System.Collections.Generic.HashSet[string]
-
-    foreach ($key in $Defaults.Keys) {
-        if ($key -in $metadata) {
-            [void]$present.Add($key)
-        }
-    }
-
-    foreach ($sweepItem in $Sweep) {
-        foreach ($property in $sweepItem.PSObject.Properties) {
-            if ($property.Name -in $metadata) {
-                [void]$present.Add($property.Name)
-            }
-        }
-    }
-
-    return @($present)
 }
 
 function New-BoardWrapper {
@@ -217,6 +201,13 @@ function New-BoardWrapper {
     $numMacs = [int](Get-ConfigValue -Config $RunConfig -Names @("NUM_MACS", "num_macs") -DefaultValue 4)
     $dataWidth = [int](Get-ConfigValue -Config $RunConfig -Names @("DATA_WIDTH", "data_width") -DefaultValue 8)
     $accWidth = [int](Get-ConfigValue -Config $RunConfig -Names @("ACC_WIDTH", "acc_width") -DefaultValue 32)
+    $memType = ConvertTo-VhdlStringLiteral -Value ([string](Get-ConfigValue -Config $RunConfig -Names @("MEM_TYPE", "mem_type") -DefaultValue "internal_fpga_ram"))
+    $dataflow = ConvertTo-VhdlStringLiteral -Value ([string](Get-ConfigValue -Config $RunConfig -Names @("DATAFLOW", "dataflow") -DefaultValue "output_stationary"))
+    $bufferingMode = ConvertTo-VhdlStringLiteral -Value ([string](Get-ConfigValue -Config $RunConfig -Names @("BUFFERING_MODE", "buffering_mode") -DefaultValue "single"))
+    $memoryBurstLen = [int](Get-ConfigValue -Config $RunConfig -Names @("MEMORY_BURST_LEN", "memory_burst_len") -DefaultValue 1)
+    $macPipelineStages = [int](Get-ConfigValue -Config $RunConfig -Names @("MAC_PIPELINE_STAGES", "mac_pipeline_stages") -DefaultValue 0)
+    $memoryBanksA = [int](Get-ConfigValue -Config $RunConfig -Names @("MEMORY_BANKS_A", "memory_banks_a") -DefaultValue 1)
+    $memoryBanksB = [int](Get-ConfigValue -Config $RunConfig -Names @("MEMORY_BANKS_B", "memory_banks_b") -DefaultValue 1)
 
     $content = @"
 library ieee;
@@ -248,6 +239,13 @@ begin
             NUM_MACS => $numMacs,
             DATA_WIDTH => $dataWidth,
             ACC_WIDTH => $accWidth,
+            MEM_TYPE => $memType,
+            DATAFLOW => $dataflow,
+            BUFFERING_MODE => $bufferingMode,
+            MEMORY_BURST_LEN => $memoryBurstLen,
+            MAC_PIPELINE_STAGES => $macPipelineStages,
+            MEMORY_BANKS_A => $memoryBanksA,
+            MEMORY_BANKS_B => $memoryBanksB,
             ENABLE_SIGNALTAP => false
         )
         port map (
@@ -281,6 +279,13 @@ function New-CoreWrapper {
     $numMacs = [int](Get-ConfigValue -Config $RunConfig -Names @("NUM_MACS", "num_macs") -DefaultValue 4)
     $dataWidth = [int](Get-ConfigValue -Config $RunConfig -Names @("DATA_WIDTH", "data_width") -DefaultValue 8)
     $accWidth = [int](Get-ConfigValue -Config $RunConfig -Names @("ACC_WIDTH", "acc_width") -DefaultValue 32)
+    $memType = ConvertTo-VhdlStringLiteral -Value ([string](Get-ConfigValue -Config $RunConfig -Names @("MEM_TYPE", "mem_type") -DefaultValue "internal_fpga_ram"))
+    $dataflow = ConvertTo-VhdlStringLiteral -Value ([string](Get-ConfigValue -Config $RunConfig -Names @("DATAFLOW", "dataflow") -DefaultValue "output_stationary"))
+    $bufferingMode = ConvertTo-VhdlStringLiteral -Value ([string](Get-ConfigValue -Config $RunConfig -Names @("BUFFERING_MODE", "buffering_mode") -DefaultValue "single"))
+    $memoryBurstLen = [int](Get-ConfigValue -Config $RunConfig -Names @("MEMORY_BURST_LEN", "memory_burst_len") -DefaultValue 1)
+    $macPipelineStages = [int](Get-ConfigValue -Config $RunConfig -Names @("MAC_PIPELINE_STAGES", "mac_pipeline_stages") -DefaultValue 0)
+    $memoryBanksA = [int](Get-ConfigValue -Config $RunConfig -Names @("MEMORY_BANKS_A", "memory_banks_a") -DefaultValue 1)
+    $memoryBanksB = [int](Get-ConfigValue -Config $RunConfig -Names @("MEMORY_BANKS_B", "memory_banks_b") -DefaultValue 1)
 
     $content = @"
 library ieee;
@@ -314,7 +319,14 @@ begin
             TILE_SIZE => $tileSize,
             NUM_MACS => $numMacs,
             DATA_WIDTH => $dataWidth,
-            ACC_WIDTH => $accWidth
+            ACC_WIDTH => $accWidth,
+            MEM_TYPE => $memType,
+            DATAFLOW => $dataflow,
+            BUFFERING_MODE => $bufferingMode,
+            MEMORY_BURST_LEN => $memoryBurstLen,
+            MAC_PIPELINE_STAGES => $macPipelineStages,
+            MEMORY_BANKS_A => $memoryBanksA,
+            MEMORY_BANKS_B => $memoryBanksB
         )
         port map (
             clk => clk,
@@ -439,11 +451,6 @@ Write-Host "Experimento: $experimentName"
 Write-Host "Config: $configPathAbs"
 Write-Host "Resultados: $resultsDir"
 
-$metadataOnlyKeys = Get-MetadataOnlyKeys -Defaults $defaults -Sweep $sweep
-if ($metadataOnlyKeys.Count -gt 0) {
-    Write-Warning ("Parametros ainda tratados como metadado neste RTL: " + (($metadataOnlyKeys | Sort-Object) -join ", "))
-}
-
 $runIndex = 1
 foreach ($sweepItem in $sweep) {
     if ($RunLimit -gt 0 -and $runIndex -gt $RunLimit) {
@@ -451,10 +458,23 @@ foreach ($sweepItem in $sweep) {
     }
 
     $runConfig = New-RunConfig -Defaults $defaults -SweepItem $sweepItem
+
+    if (-not $runConfig.ContainsKey("MEM_TYPE") -or $null -eq $runConfig["MEM_TYPE"]) { $runConfig["MEM_TYPE"] = "internal_fpga_ram" }
+    if (-not $runConfig.ContainsKey("DATAFLOW") -or $null -eq $runConfig["DATAFLOW"]) { $runConfig["DATAFLOW"] = "output_stationary" }
+    if (-not $runConfig.ContainsKey("BUFFERING_MODE") -or $null -eq $runConfig["BUFFERING_MODE"]) { $runConfig["BUFFERING_MODE"] = "single" }
+    if (-not $runConfig.ContainsKey("MEMORY_BURST_LEN") -or $null -eq $runConfig["MEMORY_BURST_LEN"]) { $runConfig["MEMORY_BURST_LEN"] = 1 }
+    if (-not $runConfig.ContainsKey("MAC_PIPELINE_STAGES") -or $null -eq $runConfig["MAC_PIPELINE_STAGES"]) { $runConfig["MAC_PIPELINE_STAGES"] = 0 }
+    if (-not $runConfig.ContainsKey("MEMORY_BANKS_A") -or $null -eq $runConfig["MEMORY_BANKS_A"]) { $runConfig["MEMORY_BANKS_A"] = 1 }
+    if (-not $runConfig.ContainsKey("MEMORY_BANKS_B") -or $null -eq $runConfig["MEMORY_BANKS_B"]) { $runConfig["MEMORY_BANKS_B"] = 1 }
+
     $connectivityWarnings = Get-ParameterConnectivity -RunConfig $runConfig
 
     $baseTopEntity = [string](Get-ConfigValue -Config $runConfig -Names @("TOP_ENTITY", "top_entity") -DefaultValue "matrix_accelerator_full_top")
     $useBoardTop = $true
+    if ($baseTopEntity -eq "matrix_accelerator_sdram_core_top") {
+        $baseTopEntity = "matrix_accelerator_full_top"
+    }
+
     if ($baseTopEntity -eq "matrix_mult_tiled_core") {
         $useBoardTop = $false
     } elseif ($baseTopEntity -ne "matrix_accelerator_full_top") {
@@ -482,8 +502,12 @@ foreach ($sweepItem in $sweep) {
 
     $runConfig["RUN_ID"] = $runId
     $runConfig["TOP_ENTITY_GENERATED"] = $topEntity
-    $runConfig["CONNECTED_RTL_PARAMETERS"] = @("N", "TILE_SIZE", "NUM_MACS", "DATA_WIDTH", "ACC_WIDTH")
-    $runConfig["METADATA_ONLY_PARAMETERS"] = @("MEM_TYPE", "DATAFLOW", "BUFFERING_MODE", "MEMORY_BURST_LEN", "MAC_PIPELINE_STAGES", "MEMORY_BANKS_A", "MEMORY_BANKS_B")
+    $runConfig["CONNECTED_RTL_PARAMETERS"] = @(
+        "N", "TILE_SIZE", "NUM_MACS", "DATA_WIDTH", "ACC_WIDTH",
+        "MEM_TYPE", "DATAFLOW", "BUFFERING_MODE", "MEMORY_BURST_LEN",
+        "MAC_PIPELINE_STAGES", "MEMORY_BANKS_A", "MEMORY_BANKS_B"
+    )
+    $runConfig["METADATA_ONLY_PARAMETERS"] = @()
     $runConfig["WARNINGS"] = $connectivityWarnings
     $runConfig | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $runDir "config.json") -Encoding UTF8
 
@@ -501,6 +525,10 @@ foreach ($sweepItem in $sweep) {
         $numMacs = [string](Get-ConfigValue -Config $runConfig -Names @("NUM_MACS", "num_macs") -DefaultValue 4)
         $dataWidth = [string](Get-ConfigValue -Config $runConfig -Names @("DATA_WIDTH", "data_width") -DefaultValue 8)
         $accWidth = [string](Get-ConfigValue -Config $runConfig -Names @("ACC_WIDTH", "acc_width") -DefaultValue 32)
+        $memoryBurstLen = [string](Get-ConfigValue -Config $runConfig -Names @("MEMORY_BURST_LEN", "memory_burst_len") -DefaultValue 1)
+        $macPipelineStages = [string](Get-ConfigValue -Config $runConfig -Names @("MAC_PIPELINE_STAGES", "mac_pipeline_stages") -DefaultValue 0)
+        $memoryBanksA = [string](Get-ConfigValue -Config $runConfig -Names @("MEMORY_BANKS_A", "memory_banks_a") -DefaultValue 1)
+        $memoryBanksB = [string](Get-ConfigValue -Config $runConfig -Names @("MEMORY_BANKS_B", "memory_banks_b") -DefaultValue 1)
         $simCommand = @(
             "powershell",
             "-NoProfile",
@@ -520,6 +548,14 @@ foreach ($sweepItem in $sweep) {
             $dataWidth,
             "-AccWidth",
             $accWidth,
+            "-MemoryBurstLen",
+            $memoryBurstLen,
+            "-MacPipelineStages",
+            $macPipelineStages,
+            "-MemoryBanksA",
+            $memoryBanksA,
+            "-MemoryBanksB",
+            $memoryBanksB,
             "-VsimRetryCount",
             [string]$VsimRetryCount,
             "-VsimRetrySeconds",

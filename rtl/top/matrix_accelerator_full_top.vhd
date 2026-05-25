@@ -8,14 +8,21 @@ use work.matrix_tiled_pkg.all;
 
 entity matrix_accelerator_full_top is
     generic (
-        N             : positive := DEFAULT_N;
-        TILE_SIZE     : positive := DEFAULT_TILE_SIZE;
-        NUM_MACS      : positive := DEFAULT_NUM_MACS;
-        DATA_WIDTH    : positive := DEFAULT_DATA_WIDTH;
-        ACC_WIDTH     : positive := DEFAULT_ACC_WIDTH;
-        CLKS_PER_BIT  : positive := 434;
-        CLK_FREQ_HZ   : positive := 50000000;
-        UART_FIFO_DEPTH : positive := 64;
+        N                   : positive := DEFAULT_N;
+        TILE_SIZE           : positive := DEFAULT_TILE_SIZE;
+        NUM_MACS            : positive := DEFAULT_NUM_MACS;
+        DATA_WIDTH          : positive := DEFAULT_DATA_WIDTH;
+        ACC_WIDTH           : positive := DEFAULT_ACC_WIDTH;
+        MEM_TYPE            : string := "internal_fpga_ram";
+        DATAFLOW            : string := "output_stationary";
+        BUFFERING_MODE      : string := "single";
+        MEMORY_BURST_LEN    : natural := 1;
+        MAC_PIPELINE_STAGES : natural := 0;
+        MEMORY_BANKS_A      : positive := 1;
+        MEMORY_BANKS_B      : positive := 1;
+        CLKS_PER_BIT        : positive := 434;
+        CLK_FREQ_HZ         : positive := 50000000;
+        UART_FIFO_DEPTH     : positive := 64;
         ENABLE_SIGNALTAP : boolean := true
     );
     port (
@@ -237,11 +244,18 @@ begin
 
     u_core : entity work.matrix_mult_tiled_core
         generic map (
-            N          => N,
-            TILE_SIZE  => TILE_SIZE,
-            NUM_MACS   => NUM_MACS,
-            DATA_WIDTH => DATA_WIDTH,
-            ACC_WIDTH  => ACC_WIDTH
+            N                   => N,
+            TILE_SIZE           => TILE_SIZE,
+            NUM_MACS            => NUM_MACS,
+            DATA_WIDTH          => DATA_WIDTH,
+            ACC_WIDTH           => ACC_WIDTH,
+            MEM_TYPE            => MEM_TYPE,
+            DATAFLOW            => DATAFLOW,
+            BUFFERING_MODE      => BUFFERING_MODE,
+            MEMORY_BURST_LEN    => MEMORY_BURST_LEN,
+            MAC_PIPELINE_STAGES => MAC_PIPELINE_STAGES,
+            MEMORY_BANKS_A      => MEMORY_BANKS_A,
+            MEMORY_BANKS_B      => MEMORY_BANKS_B
         )
         port map (
             clk         => clk,

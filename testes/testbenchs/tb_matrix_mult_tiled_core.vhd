@@ -12,7 +12,11 @@ entity tb_matrix_mult_tiled_core is
         TILE_SIZE  : positive := 2;
         NUM_MACS   : positive := 2;
         DATA_WIDTH : positive := 8;
-        ACC_WIDTH  : positive := 32
+        ACC_WIDTH           : positive := 32;
+        MEMORY_BURST_LEN    : natural := 1;
+        MAC_PIPELINE_STAGES : natural := 0;
+        MEMORY_BANKS_A      : positive := 1;
+        MEMORY_BANKS_B      : positive := 1
     );
 end entity tb_matrix_mult_tiled_core;
 
@@ -107,11 +111,15 @@ begin
 
     dut : entity work.matrix_mult_tiled_core
         generic map (
-            N          => N,
-            TILE_SIZE  => TILE_SIZE,
-            NUM_MACS   => NUM_MACS,
-            DATA_WIDTH => DATA_WIDTH,
-            ACC_WIDTH  => ACC_WIDTH
+            N                   => N,
+            TILE_SIZE           => TILE_SIZE,
+            NUM_MACS            => NUM_MACS,
+            DATA_WIDTH          => DATA_WIDTH,
+            ACC_WIDTH           => ACC_WIDTH,
+            MEMORY_BURST_LEN    => MEMORY_BURST_LEN,
+            MAC_PIPELINE_STAGES => MAC_PIPELINE_STAGES,
+            MEMORY_BANKS_A      => MEMORY_BANKS_A,
+            MEMORY_BANKS_B      => MEMORY_BANKS_B
         )
         port map (
             clk => clk,

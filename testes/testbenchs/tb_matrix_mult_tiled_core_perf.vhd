@@ -13,6 +13,10 @@ entity tb_matrix_mult_tiled_core_perf is
         NUM_MACS   : positive := 2;
         DATA_WIDTH : positive := 8;
         ACC_WIDTH  : positive := 32;
+        MEMORY_BURST_LEN : natural := 1;
+        MAC_PIPELINE_STAGES : natural := 0;
+        MEMORY_BANKS_A : positive := 1;
+        MEMORY_BANKS_B : positive := 1;
         SIMULATE_DUT : boolean := false
     );
 end entity tb_matrix_mult_tiled_core_perf;
@@ -48,7 +52,8 @@ architecture sim of tb_matrix_mult_tiled_core_perf is
     function estimate_exec_cycles(
         constant matrix_size : positive;
         constant tile_size   : positive;
-        constant num_macs    : positive
+        constant num_macs    : positive;
+        constant pipeline_stages : natural
     ) return natural is
         variable tile_elems     : natural;
         variable num_tiles      : natural;
@@ -63,7 +68,7 @@ architecture sim of tb_matrix_mult_tiled_core_perf is
         num_tiles      := matrix_size / tile_size;
         output_tiles   := num_tiles * num_tiles;
         mac_groups     := ceil_div(tile_elems, num_macs);
-        compute_cycles := (mac_groups * tile_size) + 3;
+        compute_cycles := ((mac_groups + pipeline_stages) * tile_size) + 3;
 
         first_k_cycles := (3 * tile_elems) + compute_cycles + 1 + tile_elems + 1;
         next_k_cycles  := (3 * tile_elems) + (3 * tile_elems) + compute_cycles + 1 + tile_elems + 1;
@@ -80,11 +85,15 @@ begin
     begin
         dut : entity work.matrix_mult_tiled_core
             generic map (
-                N          => N,
-                TILE_SIZE  => TILE_SIZE,
-                NUM_MACS   => NUM_MACS,
-                DATA_WIDTH => DATA_WIDTH,
-                ACC_WIDTH  => ACC_WIDTH
+                N                   => N,
+                TILE_SIZE           => TILE_SIZE,
+                NUM_MACS            => NUM_MACS,
+                DATA_WIDTH          => DATA_WIDTH,
+                ACC_WIDTH           => ACC_WIDTH,
+                MEMORY_BURST_LEN    => MEMORY_BURST_LEN,
+                MAC_PIPELINE_STAGES => MAC_PIPELINE_STAGES,
+                MEMORY_BANKS_A      => MEMORY_BANKS_A,
+                MEMORY_BANKS_B      => MEMORY_BANKS_B
             )
             port map (
                 clk => clk,
@@ -122,12 +131,13 @@ begin
         wait for CLK_PERIOD;
 
         if not SIMULATE_DUT then
-            exec_cycles := estimate_exec_cycles(N, TILE_SIZE, NUM_MACS);
+            exec_cycles := estimate_exec_cycles(N, TILE_SIZE, NUM_MACS, MAC_PIPELINE_STAGES);
 
             report "Ciclos de execucao: " & integer'image(exec_cycles) severity note;
             report "Teste perf tiled estimado para N=" & integer'image(N) &
                    ", TILE_SIZE=" & integer'image(TILE_SIZE) &
-                   ", NUM_MACS=" & integer'image(NUM_MACS) severity note;
+                   ", NUM_MACS=" & integer'image(NUM_MACS) &
+                   ", MAC_PIPELINE_STAGES=" & integer'image(MAC_PIPELINE_STAGES) severity note;
             report "SIM_RESULT: PASS" severity note;
 
             finish;

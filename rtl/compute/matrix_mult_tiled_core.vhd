@@ -7,11 +7,18 @@ use work.matrix_tiled_pkg.all;
 
 entity matrix_mult_tiled_core is
     generic (
-        N          : positive := 128;
-        TILE_SIZE  : positive := 4;
-        NUM_MACS   : positive := 4;
-        DATA_WIDTH : positive := 8;
-        ACC_WIDTH  : positive := 32
+        N                   : positive := 128;
+        TILE_SIZE           : positive := 4;
+        NUM_MACS            : positive := 4;
+        DATA_WIDTH          : positive := 8;
+        ACC_WIDTH           : positive := 32;
+        MEM_TYPE            : string := "internal_fpga_ram";
+        DATAFLOW            : string := "output_stationary";
+        BUFFERING_MODE      : string := "single";
+        MEMORY_BURST_LEN    : natural := 1;
+        MAC_PIPELINE_STAGES : natural := 0;
+        MEMORY_BANKS_A      : positive := 1;
+        MEMORY_BANKS_B      : positive := 1
     );
     port (
         clk : in std_logic;
@@ -158,6 +165,26 @@ begin
         report "N precisa ser multiplo de TILE_SIZE."
         severity failure;
 
+    assert DATAFLOW = "output_stationary"
+        report "DATAFLOW diferente de output_stationary ainda nao altera o datapath deste core."
+        severity warning;
+
+    assert MEM_TYPE = "internal_fpga_ram"
+        report "MEM_TYPE diferente de internal_fpga_ram ainda usa a implementacao interna deste core."
+        severity warning;
+
+    assert BUFFERING_MODE = "single" or BUFFERING_MODE = "double"
+        report "BUFFERING_MODE deve ser single ou double."
+        severity failure;
+
+    assert MEMORY_BURST_LEN >= 1
+        report "MEMORY_BURST_LEN precisa ser >= 1."
+        severity failure;
+
+    assert MEMORY_BANKS_A >= 1 and MEMORY_BANKS_B >= 1
+        report "MEMORY_BANKS_A/B precisam ser >= 1."
+        severity failure;
+
     busy <= busy_reg;
     done <= done_reg;
     data_out <= c_rd_data;
@@ -210,10 +237,11 @@ begin
 
     u_compute : entity work.matrix_tiled_compute_core
         generic map (
-            TILE_SIZE  => TILE_SIZE,
-            NUM_MACS   => NUM_MACS,
-            DATA_WIDTH => DATA_WIDTH,
-            ACC_WIDTH  => ACC_WIDTH
+            TILE_SIZE           => TILE_SIZE,
+            NUM_MACS            => NUM_MACS,
+            DATA_WIDTH          => DATA_WIDTH,
+            ACC_WIDTH           => ACC_WIDTH,
+            MAC_PIPELINE_STAGES => MAC_PIPELINE_STAGES
         )
         port map (
             clk        => clk,

@@ -4,10 +4,11 @@ use ieee.numeric_std.all;
 
 entity matrix_tiled_compute_core is
     generic (
-        TILE_SIZE  : positive := 4;
-        NUM_MACS   : positive := 4;
-        DATA_WIDTH : positive := 8;
-        ACC_WIDTH  : positive := 32
+        TILE_SIZE           : positive := 4;
+        NUM_MACS            : positive := 4;
+        DATA_WIDTH          : positive := 8;
+        ACC_WIDTH           : positive := 32;
+        MAC_PIPELINE_STAGES : natural := 0
     );
     port (
         clk : in std_logic;
@@ -37,15 +38,32 @@ architecture rtl of matrix_tiled_compute_core is
     type state_t is (
         IDLE,
         RUN,
+        DRAIN_PIPE,
         DONE_STATE
     );
 
     signal state : state_t := IDLE;
 
+    function calc_pipe_depth(constant stages : natural) return positive is
+    begin
+        if stages = 0 then
+            return 1;
+        end if;
+
+        return stages;
+    end function;
+
+    constant PIPE_DEPTH : positive := calc_pipe_depth(MAC_PIPELINE_STAGES);
+
     signal c_acc : acc_tile_t := (others => (others => '0'));
 
     signal k_idx     : integer range 0 to TILE_SIZE-1 := 0;
     signal elem_base : integer range 0 to TILE_ELEMS-1 := 0;
+    signal drain_count : integer range 0 to PIPE_DEPTH := 0;
+
+    type base_pipe_t is array (0 to PIPE_DEPTH-1) of integer range 0 to TILE_ELEMS-1;
+    signal base_pipe  : base_pipe_t := (others => 0);
+    signal valid_pipe : std_logic_vector(0 to PIPE_DEPTH-1) := (others => '0');
 
     signal lane_a       : data_lane_t := (others => (others => '0'));
     signal lane_b       : data_lane_t := (others => (others => '0'));
@@ -120,10 +138,13 @@ begin
 
         u_mac : entity work.mac_unit
             generic map (
-                DATA_WIDTH => DATA_WIDTH,
-                ACC_WIDTH  => ACC_WIDTH
+                DATA_WIDTH      => DATA_WIDTH,
+                ACC_WIDTH       => ACC_WIDTH,
+                PIPELINE_STAGES => MAC_PIPELINE_STAGES
             )
             port map (
+                clk     => clk,
+                rst     => rst,
                 a       => lane_a(lane),
                 b       => lane_b(lane),
                 acc_in  => lane_acc_in(lane),
@@ -133,21 +154,59 @@ begin
 
     process(clk, rst)
         variable out_idx : integer;
+        variable commit_base  : integer;
+        variable commit_valid : std_logic;
+        variable shift_idx : natural;
     begin
         if rst = '1' then
             state     <= IDLE;
             c_acc     <= (others => (others => '0'));
             k_idx     <= 0;
             elem_base <= 0;
+            drain_count <= 0;
+            base_pipe  <= (others => 0);
+            valid_pipe <= (others => '0');
             done_reg  <= '0';
 
         elsif rising_edge(clk) then
+            if MAC_PIPELINE_STAGES = 0 then
+                commit_base  := elem_base;
+                base_pipe    <= (others => 0);
+                valid_pipe   <= (others => '0');
+
+                if state = RUN then
+                    commit_valid := '1';
+                else
+                    commit_valid := '0';
+                end if;
+            else
+                commit_base  := base_pipe(PIPE_DEPTH-1);
+                commit_valid := valid_pipe(PIPE_DEPTH-1);
+
+                shift_idx := PIPE_DEPTH - 1;
+                while shift_idx > 0 loop
+                    base_pipe(shift_idx)  <= base_pipe(shift_idx-1);
+                    valid_pipe(shift_idx) <= valid_pipe(shift_idx-1);
+                    shift_idx := shift_idx - 1;
+                end loop;
+
+                if state = RUN then
+                    base_pipe(0)  <= elem_base;
+                    valid_pipe(0) <= '1';
+                else
+                    base_pipe(0)  <= 0;
+                    valid_pipe(0) <= '0';
+                end if;
+            end if;
+
             case state is
 
                 when IDLE =>
                     done_reg  <= '0';
                     k_idx     <= 0;
                     elem_base <= 0;
+                    drain_count <= 0;
+                    valid_pipe <= (others => '0');
 
                     if start = '1' then
                         for idx in 0 to TILE_ELEMS-1 loop
@@ -158,25 +217,55 @@ begin
                     end if;
 
                 when RUN =>
-                    for lane in 0 to NUM_MACS-1 loop
-                        out_idx := elem_base + lane;
+                    if commit_valid = '1' then
+                        for lane in 0 to NUM_MACS-1 loop
+                            out_idx := commit_base + lane;
 
-                        if out_idx < TILE_ELEMS then
-                            c_acc(out_idx) <= lane_acc_out(lane);
-                        end if;
-                    end loop;
+                            if out_idx < TILE_ELEMS then
+                                c_acc(out_idx) <= lane_acc_out(lane);
+                            end if;
+                        end loop;
+                    end if;
 
                     if elem_base + NUM_MACS >= TILE_ELEMS then
                         elem_base <= 0;
 
+                        if MAC_PIPELINE_STAGES = 0 then
+                            if k_idx = TILE_SIZE-1 then
+                                done_reg <= '1';
+                                state    <= DONE_STATE;
+                            else
+                                k_idx <= k_idx + 1;
+                            end if;
+                        else
+                            drain_count <= PIPE_DEPTH - 1;
+                            state       <= DRAIN_PIPE;
+                        end if;
+                    else
+                        elem_base <= elem_base + NUM_MACS;
+                    end if;
+
+                when DRAIN_PIPE =>
+                    if commit_valid = '1' then
+                        for lane in 0 to NUM_MACS-1 loop
+                            out_idx := commit_base + lane;
+
+                            if out_idx < TILE_ELEMS then
+                                c_acc(out_idx) <= lane_acc_out(lane);
+                            end if;
+                        end loop;
+                    end if;
+
+                    if drain_count = 0 then
                         if k_idx = TILE_SIZE-1 then
                             done_reg <= '1';
                             state    <= DONE_STATE;
                         else
                             k_idx <= k_idx + 1;
+                            state <= RUN;
                         end if;
                     else
-                        elem_base <= elem_base + NUM_MACS;
+                        drain_count <= drain_count - 1;
                     end if;
 
                 when DONE_STATE =>

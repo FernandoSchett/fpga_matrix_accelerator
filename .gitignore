@@ -24,6 +24,8 @@ work/
 experiments/results/
 scripts/results/
 parameter_optimization/results/
+parameter_optimization/results/**/plots/
+parameter_optimization/results/**/*.svg
 results/
 graficos_uteis/
 .venv/

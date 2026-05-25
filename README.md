@@ -39,9 +39,11 @@ git submodule update --init --recursive
 
 - `run_testbenchs.ps1`: roda os testbenches VHDL.
 - `run_all_experiments.ps1`: atalho para rodar experimentos arquiteturais.
-- `parameter_optimization/run_sdram_arch_experiments.ps1`: executa uma fase de sweep a partir de JSON.
-- `parameter_optimization/parse_quartus_reports.py`: extrai recursos, Fmax e dados dos relatorios Quartus.
-- `parameter_optimization/collect_results.py`: consolida runs em CSV e JSON.
+- `parameter_optimization/run_experiment.ps1`: executa uma fase de sweep a partir de JSON.
+- `parameter_optimization/main.py`: entrada Python do fluxo de um experimento.
+- `parameter_optimization/compare_experiments.py`: compara varios sweeps e aponta a melhor configuracao global.
+- `parameter_optimization/analysis/parse_quartus_reports.py`: extrai recursos, Fmax e dados dos relatorios Quartus.
+- `parameter_optimization/analysis/collect_results.py`: consolida runs em CSV e JSON.
 - `parameter_optimization/analysis/run_analysis.py`: gera graficos e relatorio de analise.
 - `py_matrix_host/main.py`: gera matrizes, golden model e fluxo UART/dry-run.
 
@@ -74,13 +76,13 @@ C:\altera_lite\25.1std\quartus\bin64\quartus_sh.exe --flow compile fpga_matrix_a
 Rodar o sweep principal:
 
 ```powershell
-.\parameter_optimization\run_sdram_arch_experiments.ps1 -ConfigPath .\parameter_optimization\configs\01_compute_sweep.json
+.\parameter_optimization\run_experiment.ps1 -ConfigPath .\parameter_optimization\configs\01_compute_sweep.json
 ```
 
-Rodar pelo atalho da raiz:
+Rodar todos os sweeps de `parameter_optimization/configs/` e comparar no final:
 
 ```powershell
-.\run_all_experiments.ps1 -ConfigPath .\parameter_optimization\configs\01_compute_sweep.json
+.\run_all_experiments.ps1
 ```
 
 Gerar matrizes e golden model:
@@ -100,9 +102,9 @@ python .\py_matrix_host\main.py uart --dry-run --input .\py_matrix_host\matrix\m
 Configuracoes:
 
 - `configs/01_compute_sweep.json`: varia `tile_size` e `num_macs`.
-- `configs/02_memory_sweep.json`: varia parametros de memoria.
-- `configs/03_timing_sweep.json`: varia parametros de timing/roteamento.
-- `configs/04_precision_sweep.json`: varia `DATA_WIDTH` e `ACC_WIDTH`.
+- `configs/02_run18_alm_boundary_sweep.json`: varia acumulador/pipeline ao redor da melhor configuracao.
+- `configs/03_run18_memory_banking_sweep.json`: varia bancos e buffering.
+- `configs/04_run18_elite_combo_sweep.json`: combina as melhores hipoteses.
 
 Parametros conectados ao RTL atual:
 
@@ -111,9 +113,6 @@ Parametros conectados ao RTL atual:
 - `NUM_MACS`
 - `DATA_WIDTH`
 - `ACC_WIDTH`
-
-Parametros ainda tratados como metadados:
-
 - `MEM_TYPE`
 - `DATAFLOW`
 - `BUFFERING_MODE`
@@ -130,7 +129,8 @@ Parametros ainda tratados como metadados:
 - `parameter_optimization/results/<experiment_name>/experiment_summary.json`: resumo do experimento.
 - `parameter_optimization/results/<experiment_name>/resource_speed_analysis.json`: analise de recursos e desempenho.
 - `parameter_optimization/results/<experiment_name>/analysis_report.md`: relatorio automatico.
-- `parameter_optimization/results/<experiment_name>/plots/`: graficos em PNG/SVG.
+- `parameter_optimization/results/<experiment_name>/plots/`: graficos em PNG.
+- `parameter_optimization/results/compare_experiments/`: comparacao global dos sweeps.
 
 ## Metricas Principais
 

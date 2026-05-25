@@ -1,0 +1,38 @@
+{
+  "experiment_name": "02_run18_alm_boundary_sweep",
+  "description": "Busca local ao redor da run_018 para aumentar uso de ALMs sem aumentar num_macs, mantendo N fixo e DSPs próximos do limite.",
+  "defaults": {
+    "N": 128,
+    "DATA_WIDTH": 8,
+    "ACC_WIDTH": 32,
+    "MEM_TYPE": "internal_fpga_ram",
+    "DATAFLOW": "output_stationary",
+    "BUFFERING_MODE": "single",
+    "MEMORY_BURST_LEN": null,
+    "tile_size": 16,
+    "num_macs": 64,
+    "MAC_PIPELINE_STAGES": 0,
+    "MEMORY_BANKS_A": 1,
+    "MEMORY_BANKS_B": 1,
+    "TOP_ENTITY": "matrix_accelerator_full_top"
+  },
+  "sweep": [
+    { "ACC_WIDTH": 32, "MAC_PIPELINE_STAGES": 0 },
+    { "ACC_WIDTH": 40, "MAC_PIPELINE_STAGES": 0 },
+    { "ACC_WIDTH": 48, "MAC_PIPELINE_STAGES": 0 },
+    { "ACC_WIDTH": 56, "MAC_PIPELINE_STAGES": 0 },
+    { "ACC_WIDTH": 64, "MAC_PIPELINE_STAGES": 0 },
+
+    { "ACC_WIDTH": 32, "MAC_PIPELINE_STAGES": 1 },
+    { "ACC_WIDTH": 40, "MAC_PIPELINE_STAGES": 1 },
+    { "ACC_WIDTH": 48, "MAC_PIPELINE_STAGES": 1 },
+    { "ACC_WIDTH": 56, "MAC_PIPELINE_STAGES": 1 },
+    { "ACC_WIDTH": 64, "MAC_PIPELINE_STAGES": 1 },
+
+    { "ACC_WIDTH": 32, "MAC_PIPELINE_STAGES": 2 },
+    { "ACC_WIDTH": 40, "MAC_PIPELINE_STAGES": 2 },
+    { "ACC_WIDTH": 48, "MAC_PIPELINE_STAGES": 2 },
+    { "ACC_WIDTH": 56, "MAC_PIPELINE_STAGES": 2 },
+    { "ACC_WIDTH": 64, "MAC_PIPELINE_STAGES": 2 }
+  ]
+}

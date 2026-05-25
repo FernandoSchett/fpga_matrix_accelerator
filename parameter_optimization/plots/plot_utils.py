@@ -15,13 +15,8 @@ def save_figure(plt, plots_dir, filename):
     plots_dir = Path(plots_dir)
     plots_dir.mkdir(parents=True, exist_ok=True)
     png_path = plots_dir / f"{filename}.png"
-    svg_path = plots_dir / f"{filename}.svg"
     plt.tight_layout()
     plt.savefig(png_path, dpi=160)
-    try:
-        plt.savefig(svg_path)
-    except OSError:
-        pass
     plt.close()
     return png_path
 

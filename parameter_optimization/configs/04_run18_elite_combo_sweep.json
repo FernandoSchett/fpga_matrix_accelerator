@@ -1,0 +1,157 @@
+{
+  "experiment_name": "04_run18_elite_combo_sweep",
+  "description": "Combinacoes fortes ao redor da run_018 para buscar o melhor ponto de desempenho, uso de ALMs, Fmax e roteabilidade.",
+  "defaults": {
+    "N": 128,
+    "DATA_WIDTH": 8,
+    "ACC_WIDTH": 32,
+    "MEM_TYPE": "internal_fpga_ram",
+    "DATAFLOW": "output_stationary",
+    "BUFFERING_MODE": "single",
+    "MEMORY_BURST_LEN": null,
+    "tile_size": 16,
+    "num_macs": 64,
+    "MAC_PIPELINE_STAGES": 0,
+    "MEMORY_BANKS_A": 1,
+    "MEMORY_BANKS_B": 1,
+    "TOP_ENTITY": "matrix_accelerator_full_top"
+  },
+  "sweep": [
+    {
+      "ACC_WIDTH": 32,
+      "MAC_PIPELINE_STAGES": 0,
+      "MEMORY_BANKS_A": 1,
+      "MEMORY_BANKS_B": 1,
+      "BUFFERING_MODE": "single"
+    },
+    {
+      "ACC_WIDTH": 40,
+      "MAC_PIPELINE_STAGES": 1,
+      "MEMORY_BANKS_A": 1,
+      "MEMORY_BANKS_B": 1,
+      "BUFFERING_MODE": "single"
+    },
+    {
+      "ACC_WIDTH": 48,
+      "MAC_PIPELINE_STAGES": 1,
+      "MEMORY_BANKS_A": 1,
+      "MEMORY_BANKS_B": 1,
+      "BUFFERING_MODE": "single"
+    },
+    {
+      "ACC_WIDTH": 40,
+      "MAC_PIPELINE_STAGES": 2,
+      "MEMORY_BANKS_A": 1,
+      "MEMORY_BANKS_B": 1,
+      "BUFFERING_MODE": "single"
+    },
+    {
+      "ACC_WIDTH": 48,
+      "MAC_PIPELINE_STAGES": 2,
+      "MEMORY_BANKS_A": 1,
+      "MEMORY_BANKS_B": 1,
+      "BUFFERING_MODE": "single"
+    },
+
+    {
+      "ACC_WIDTH": 32,
+      "MAC_PIPELINE_STAGES": 1,
+      "MEMORY_BANKS_A": 2,
+      "MEMORY_BANKS_B": 2,
+      "BUFFERING_MODE": "single"
+    },
+    {
+      "ACC_WIDTH": 40,
+      "MAC_PIPELINE_STAGES": 1,
+      "MEMORY_BANKS_A": 2,
+      "MEMORY_BANKS_B": 2,
+      "BUFFERING_MODE": "single"
+    },
+    {
+      "ACC_WIDTH": 48,
+      "MAC_PIPELINE_STAGES": 1,
+      "MEMORY_BANKS_A": 2,
+      "MEMORY_BANKS_B": 2,
+      "BUFFERING_MODE": "single"
+    },
+    {
+      "ACC_WIDTH": 32,
+      "MAC_PIPELINE_STAGES": 2,
+      "MEMORY_BANKS_A": 2,
+      "MEMORY_BANKS_B": 2,
+      "BUFFERING_MODE": "single"
+    },
+    {
+      "ACC_WIDTH": 40,
+      "MAC_PIPELINE_STAGES": 2,
+      "MEMORY_BANKS_A": 2,
+      "MEMORY_BANKS_B": 2,
+      "BUFFERING_MODE": "single"
+    },
+
+    {
+      "ACC_WIDTH": 32,
+      "MAC_PIPELINE_STAGES": 1,
+      "MEMORY_BANKS_A": 2,
+      "MEMORY_BANKS_B": 2,
+      "BUFFERING_MODE": "double"
+    },
+    {
+      "ACC_WIDTH": 40,
+      "MAC_PIPELINE_STAGES": 1,
+      "MEMORY_BANKS_A": 2,
+      "MEMORY_BANKS_B": 2,
+      "BUFFERING_MODE": "double"
+    },
+    {
+      "ACC_WIDTH": 48,
+      "MAC_PIPELINE_STAGES": 1,
+      "MEMORY_BANKS_A": 2,
+      "MEMORY_BANKS_B": 2,
+      "BUFFERING_MODE": "double"
+    },
+    {
+      "ACC_WIDTH": 32,
+      "MAC_PIPELINE_STAGES": 2,
+      "MEMORY_BANKS_A": 2,
+      "MEMORY_BANKS_B": 2,
+      "BUFFERING_MODE": "double"
+    },
+    {
+      "ACC_WIDTH": 40,
+      "MAC_PIPELINE_STAGES": 2,
+      "MEMORY_BANKS_A": 2,
+      "MEMORY_BANKS_B": 2,
+      "BUFFERING_MODE": "double"
+    },
+
+    {
+      "ACC_WIDTH": 32,
+      "MAC_PIPELINE_STAGES": 1,
+      "MEMORY_BANKS_A": 4,
+      "MEMORY_BANKS_B": 4,
+      "BUFFERING_MODE": "single"
+    },
+    {
+      "ACC_WIDTH": 40,
+      "MAC_PIPELINE_STAGES": 1,
+      "MEMORY_BANKS_A": 4,
+      "MEMORY_BANKS_B": 4,
+      "BUFFERING_MODE": "single"
+    },
+    {
+      "ACC_WIDTH": 32,
+      "MAC_PIPELINE_STAGES": 1,
+      "MEMORY_BANKS_A": 4,
+      "MEMORY_BANKS_B": 4,
+      "BUFFERING_MODE": "double"
+    },
+    {
+      "ACC_WIDTH": 40,
+      "MAC_PIPELINE_STAGES": 1,
+      "MEMORY_BANKS_A": 4,
+      "MEMORY_BANKS_B": 4,
+      "BUFFERING_MODE": "double"
+    }
+  ]
+}

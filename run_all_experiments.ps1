@@ -5,6 +5,7 @@ param(
     [switch]$SkipQuartus,
     [switch]$SkipAnalysis,
     [switch]$SkipCompare,
+    [switch]$NoResume,
     [int]$RunLimit = 0,
     [int]$VsimRetryCount = 120,
     [int]$VsimRetrySeconds = 30
@@ -68,6 +69,7 @@ foreach ($config in $configs) {
     if ($SkipSimulation) { $experimentParameters.SkipSimulation = $true }
     if ($SkipQuartus) { $experimentParameters.SkipQuartus = $true }
     if ($SkipAnalysis) { $experimentParameters.SkipAnalysis = $true }
+    if ($NoResume) { $experimentParameters.NoResume = $true }
     if ($RunLimit -gt 0) { $experimentParameters.RunLimit = $RunLimit }
 
     & $runExperimentScript @experimentParameters

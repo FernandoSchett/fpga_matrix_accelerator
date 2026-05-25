@@ -79,6 +79,8 @@ Rodar o sweep principal:
 .\parameter_optimization\run_experiment.ps1 -ConfigPath .\parameter_optimization\configs\01_compute_sweep.json
 ```
 
+Se parar no meio, rode o mesmo comando de novo. O runner retoma automaticamente: pula os runs ja consolidados, descarta o ultimo run existente e recomeca dele.
+
 Rodar todos os sweeps de `parameter_optimization/configs/` e comparar no final:
 
 ```powershell

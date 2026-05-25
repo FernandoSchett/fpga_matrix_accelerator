@@ -17,6 +17,14 @@ Rodar um experimento a partir de um JSON:
 .\parameter_optimization\run_experiment.ps1 -ConfigPath .\parameter_optimization\configs\01_compute_sweep.json
 ```
 
+Se o experimento parar no meio, rode o mesmo comando de novo. O runner pula os runs ja processados, descarta o ultimo run existente e recomeca dele.
+
+Para forcar do inicio:
+
+```powershell
+.\parameter_optimization\run_experiment.ps1 -ConfigPath .\parameter_optimization\configs\01_compute_sweep.json -NoResume
+```
+
 Smoke test sem simular nem compilar:
 
 ```powershell

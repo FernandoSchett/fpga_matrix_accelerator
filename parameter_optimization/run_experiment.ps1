@@ -3,6 +3,7 @@ param(
     [switch]$SkipSimulation,
     [switch]$SkipQuartus,
     [switch]$SkipAnalysis,
+    [switch]$NoResume,
     [int]$RunLimit = 0,
     [int]$VsimRetryCount = 10,
     [int]$VsimRetrySeconds = 30
@@ -426,6 +427,94 @@ function Get-ExperimentName {
     return [System.IO.Path]::GetFileNameWithoutExtension($ConfigPathAbs)
 }
 
+function Get-RunIndexFromName {
+    param([string]$Name)
+
+    $regexMatch = [regex]::Match($Name, "^run_([0-9]+)_")
+    if (-not $regexMatch.Success) {
+        return $null
+    }
+    return [int]$regexMatch.Groups[1].Value
+}
+
+function Get-RunInfoByIndex {
+    param(
+        [string]$RunsDir,
+        [int]$MaxIndex
+    )
+
+    if (-not (Test-Path -LiteralPath $RunsDir)) {
+        return @()
+    }
+
+    $items = @()
+    foreach ($runDirItem in Get-ChildItem -LiteralPath $RunsDir -Directory) {
+        $runIndexValue = Get-RunIndexFromName -Name $runDirItem.Name
+        if ($null -eq $runIndexValue -or $runIndexValue -gt $MaxIndex) {
+            continue
+        }
+        $items += [pscustomobject]@{
+            Index = $runIndexValue
+            Path = $runDirItem.FullName
+            Name = $runDirItem.Name
+            HasParsedQuartus = Test-Path -LiteralPath (Join-Path $runDirItem.FullName "parsed_quartus.json")
+        }
+    }
+    return @($items | Sort-Object Index)
+}
+
+function Remove-RunDirectorySafely {
+    param(
+        [string]$RunDir,
+        [string]$RunsDir
+    )
+
+    $resolvedRunsDir = (Resolve-Path -LiteralPath $RunsDir).Path
+    $resolvedRunDir = (Resolve-Path -LiteralPath $RunDir).Path
+    $prefix = $resolvedRunsDir.TrimEnd("\", "/") + [System.IO.Path]::DirectorySeparatorChar
+    if (-not $resolvedRunDir.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Recusando remover pasta fora de runs/: $resolvedRunDir"
+    }
+
+    Remove-Item -LiteralPath $resolvedRunDir -Recurse -Force
+}
+
+function Get-ResumeStartIndex {
+    param(
+        [string]$RunsDir,
+        [int]$ExpectedRuns,
+        [switch]$NoResume
+    )
+
+    if ($NoResume -or $ExpectedRuns -le 0) {
+        return 1
+    }
+
+    $runInfos = @(Get-RunInfoByIndex -RunsDir $RunsDir -MaxIndex $ExpectedRuns)
+    if ($runInfos.Count -eq 0) {
+        return 1
+    }
+
+    $allExpectedParsed = $true
+    for ($expectedIndex = 1; $expectedIndex -le $ExpectedRuns; $expectedIndex++) {
+        $info = $runInfos | Where-Object { $_.Index -eq $expectedIndex } | Select-Object -First 1
+        if ($null -eq $info -or -not $info.HasParsedQuartus) {
+            $allExpectedParsed = $false
+            break
+        }
+    }
+
+    if ($allExpectedParsed) {
+        Write-Host "Resume: todos os $ExpectedRuns runs ja possuem parsed_quartus.json; nada sera recompilado."
+        return ($ExpectedRuns + 1)
+    }
+
+    $lastRun = $runInfos | Sort-Object Index | Select-Object -Last 1
+    Write-Host "Resume: descartando ultimo run existente antes de continuar: $($lastRun.Name)"
+    Remove-RunDirectorySafely -RunDir $lastRun.Path -RunsDir $RunsDir
+    return $lastRun.Index
+}
+
 $configPathAbs = Resolve-ProjectPath -PathValue $ConfigPath
 $configData = Get-Content -LiteralPath $configPathAbs -Raw | ConvertFrom-Json
 $experimentName = Get-ExperimentName -ConfigData $configData -ConfigPathAbs $configPathAbs
@@ -450,10 +539,22 @@ Write-Host "Experimento: $experimentName"
 Write-Host "Config: $configPathAbs"
 Write-Host "Resultados: $resultsDir"
 
+$expectedRuns = $sweep.Count
+if ($RunLimit -gt 0 -and $RunLimit -lt $expectedRuns) {
+    $expectedRuns = $RunLimit
+}
+$resumeStartIndex = Get-ResumeStartIndex -RunsDir $runsDir -ExpectedRuns $expectedRuns -NoResume:$NoResume
+
 $runIndex = 1
 foreach ($sweepItem in $sweep) {
     if ($RunLimit -gt 0 -and $runIndex -gt $RunLimit) {
         break
+    }
+
+    if ($runIndex -lt $resumeStartIndex) {
+        Write-Host ("Resume: pulando run_{0:D3}; ja foi processado." -f $runIndex)
+        $runIndex++
+        continue
     }
 
     $runConfig = New-RunConfig -Defaults $defaults -SweepItem $sweepItem

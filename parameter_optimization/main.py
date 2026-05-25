@@ -34,6 +34,8 @@ def run_experiment(args):
         command.append("-SkipQuartus")
     if args.skip_analysis:
         command.append("-SkipAnalysis")
+    if args.no_resume:
+        command.append("-NoResume")
     if args.run_limit > 0:
         command.extend(["-RunLimit", str(args.run_limit)])
 
@@ -51,6 +53,7 @@ def main():
     parser.add_argument("--skip-simulation", action="store_true")
     parser.add_argument("--skip-quartus", action="store_true")
     parser.add_argument("--skip-analysis", action="store_true")
+    parser.add_argument("--no-resume", action="store_true")
     parser.add_argument("--run-limit", type=int, default=0)
     parser.add_argument("--vsim-retry-count", type=int, default=10)
     parser.add_argument("--vsim-retry-seconds", type=int, default=30)

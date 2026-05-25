@@ -3,7 +3,9 @@ param(
     [switch]$SkipSimulation,
     [switch]$SkipQuartus,
     [switch]$SkipAnalysis,
-    [int]$RunLimit = 0
+    [int]$RunLimit = 0,
+    [int]$VsimRetryCount = 10,
+    [int]$VsimRetrySeconds = 30
 )
 
 $ErrorActionPreference = "Stop"
@@ -80,8 +82,15 @@ function Invoke-CapturedCommand {
         if ($Command.Count -gt 1) {
             $commandArguments = $Command[1..($Command.Count - 1)]
         }
-        $output = & $executable @commandArguments 2>&1
-        $exitCode = $LASTEXITCODE
+        $previousErrorActionPreference = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = "Continue"
+            $output = & $executable @commandArguments 2>&1 | ForEach-Object { "$_" }
+            $exitCode = $LASTEXITCODE
+        }
+        finally {
+            $ErrorActionPreference = $previousErrorActionPreference
+        }
     }
     finally {
         Set-Location $previousLocation
@@ -510,7 +519,11 @@ foreach ($sweepItem in $sweep) {
             "-DataWidth",
             $dataWidth,
             "-AccWidth",
-            $accWidth
+            $accWidth,
+            "-VsimRetryCount",
+            [string]$VsimRetryCount,
+            "-VsimRetrySeconds",
+            [string]$VsimRetrySeconds
         )
         Invoke-CapturedCommand -Command $simCommand -LogPath (Join-Path $simulationLogsDir "simulation.log") -WorkingDirectory $projectRoot | Out-Null
     }

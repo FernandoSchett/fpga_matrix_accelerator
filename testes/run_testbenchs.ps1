@@ -5,6 +5,8 @@ param(
     [int]$NumMacs = 0,
     [int]$DataWidth = 0,
     [int]$AccWidth = 0,
+    [int]$VsimRetryCount = 10,
+    [int]$VsimRetrySeconds = 30,
     [switch]$Quartus,
     [switch]$QuartusFull
 )
@@ -74,7 +76,11 @@ function Invoke-Step {
 }
 
 function Invoke-CapturedStep {
-    param([string[]]$Command)
+    param(
+        [string[]]$Command,
+        [int]$MaxAttempts = 1,
+        [int]$RetryDelaySeconds = 0
+    )
 
     Write-Host ""
     Write-Host ("$ " + ($Command -join " "))
@@ -85,15 +91,45 @@ function Invoke-CapturedStep {
         $cmdArgs = $Command[1..($Command.Count - 1)]
     }
 
-    $output = & $exe @cmdArgs 2>&1
-    $exitCode = $LASTEXITCODE
-    $output | ForEach-Object { Write-Host $_ }
+    $attempt = 1
+    while ($true) {
+        if ($attempt -gt 1) {
+            Write-Host ""
+            Write-Host "Tentativa $attempt de $MaxAttempts..."
+        }
 
-    if ($exitCode -ne 0) {
+        $previousErrorActionPreference = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = "Continue"
+            $output = & $exe @cmdArgs 2>&1 | ForEach-Object { "$_" }
+            $exitCode = $LASTEXITCODE
+        }
+        finally {
+            $ErrorActionPreference = $previousErrorActionPreference
+        }
+
+        $output | ForEach-Object { Write-Host $_ }
+        $transcriptText = ($output -join [Environment]::NewLine)
+        $licenseBusy = $transcriptText -match "License checkout has been disallowed" -or
+                       $transcriptText -match "only one session is allowed"
+
+        if ($exitCode -eq 0) {
+            return $transcriptText
+        }
+
+        if ($licenseBusy -and $attempt -lt $MaxAttempts) {
+            Write-Warning "Licenca do Questa ocupada por outra sessao. Aguardando $RetryDelaySeconds segundos antes de tentar novamente."
+            Start-Sleep -Seconds $RetryDelaySeconds
+            $attempt++
+            continue
+        }
+
+        if ($licenseBusy) {
+            throw "Questa/ModelSim nao conseguiu abrir licenca apos $MaxAttempts tentativa(s). Feche ou aguarde outra simulacao terminar e rode novamente."
+        }
+
         throw "Comando falhou com exit code ${exitCode}: $($Command -join ' ')"
     }
-
-    return ($output -join [Environment]::NewLine)
 }
 
 function Invoke-VhdlCompilation {
@@ -224,7 +260,7 @@ function Invoke-Testbench {
         "run -all; quit -f"
     )
 
-    $transcript = Invoke-CapturedStep -Command $vsimCommand
+    $transcript = Invoke-CapturedStep -Command $vsimCommand -MaxAttempts $VsimRetryCount -RetryDelaySeconds $VsimRetrySeconds
 
     if ($transcript -notlike "*$PassMarker*") {
         throw "A simulacao terminou, mas nao encontrou o marcador: $PassMarker"

@@ -366,6 +366,13 @@ def write_csv(path, rows):
             writer.writerow({column: row.get(column) for column in fieldnames})
 
 
+def best_by_numeric(rows, key):
+    valid_rows = [row for row in rows if to_float(row.get(key)) is not None]
+    if not valid_rows:
+        return None
+    return max(valid_rows, key=lambda row: to_float(row.get(key)))
+
+
 def collect_results(runs_dir, output_csv):
     runs_dir = Path(runs_dir).resolve()
     output_csv = Path(output_csv).resolve()
@@ -409,9 +416,9 @@ def collect_results(runs_dir, output_csv):
         row for row in final_rows
         if "successful" in str(row.get("flow_status", "")).lower() or str(row.get("flow_status", "")).lower() in {"success", "skipped"}
     ]
-    best_exact = max(final_rows, key=lambda row: to_float(row.get("gops_eff_exact")) or -1, default=None)
-    best_approx = max(final_rows, key=lambda row: to_float(row.get("gops_eff_approx")) or -1, default=None)
-    best_eff = max(final_rows, key=lambda row: to_float(row.get("peak_efficiency")) or -1, default=None)
+    best_exact = best_by_numeric(final_rows, "gops_eff_exact")
+    best_approx = best_by_numeric(final_rows, "gops_eff_approx")
+    best_eff = best_by_numeric(final_rows, "peak_efficiency")
     warnings = {row["run_id"]: row["warnings"] for row in final_rows if row.get("warnings")}
 
     summary = {

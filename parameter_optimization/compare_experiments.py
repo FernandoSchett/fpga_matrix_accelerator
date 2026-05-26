@@ -106,6 +106,11 @@ def normalize_flow_status(value):
     return str(value or "").strip().lower()
 
 
+def flow_status_is_success(value):
+    normalized = normalize_flow_status(value)
+    return normalized == "success" or normalized.startswith("successful")
+
+
 def is_false(value):
     return str(value or "").strip().lower() in ("false", "0", "no", "nao")
 
@@ -124,7 +129,7 @@ def is_eligible(row, metric_key):
         return False
     if exec_cycles is None or exec_cycles <= 0:
         return False
-    if flow_status and flow_status != "successful":
+    if flow_status and not flow_status_is_success(flow_status):
         return False
     if is_false(validation_passed):
         return False

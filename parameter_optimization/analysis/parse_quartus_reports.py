@@ -71,15 +71,35 @@ def max_mhz_from_fmax_tables(text):
     return max(values) if values else None
 
 
-def parse_quartus_reports(reports_dir):
+def parse_quartus_reports(reports_dir, run_dir=None):
     reports_dir = Path(reports_dir)
     text, files = read_reports(reports_dir)
+    if run_dir is not None:
+        run_text, run_files = read_reports(Path(run_dir))
+        if run_text:
+            text = "\n".join(part for part in (text, run_text) if part)
+        seen = {str(path) for path in files}
+        for report_file in run_files:
+            if str(report_file) not in seen:
+                files.append(report_file)
     warnings = []
 
     if not text:
         warnings.append(f"nenhum relatorio encontrado em {reports_dir}")
 
     flow_status = first_match(text, [r";\s*Flow Status\s*;\s*([^;\n]+?)\s*;", r"Flow Status\s*:\s*(.+)"])
+    failure_patterns = [
+        r"Quartus Prime Shell was unsuccessful",
+        r"Quartus Prime Full Compilation was unsuccessful",
+        r"Flow compile .* was not successful",
+        r"Fitter was unsuccessful",
+        r"Can't fit design in device",
+        r"Illegal database file name",
+    ]
+    if any(re.search(pattern, text, flags=re.IGNORECASE) for pattern in failure_patterns):
+        if flow_status and "successful" in flow_status.lower():
+            warnings.append(f"flow_status do relatorio parcial era '{flow_status}', mas o log contem erro de compilacao")
+        flow_status = "Flow Failed"
     top_entity = first_match(text, [r";\s*Top-level Entity Name\s*;\s*([^;\n]+?)\s*;", r"Top-level Entity Name\s*:\s*(.+)"])
     device = first_match(text, [r";\s*Device\s*;\s*([^;\n]+?)\s*;", r"Device\s*:\s*([A-Z0-9]+)"])
     quartus_version = first_match(text, [r";\s*Quartus Prime Version\s*;\s*([^;\n]+?)\s*;", r"Quartus Prime Version\s+([0-9][^\n]+)", r"Version\s+([0-9][^\n]+)"])
@@ -152,7 +172,7 @@ def main():
             raise SystemExit("Use --reports-dir ou --run-dir.")
         reports_dir = parsed_args.run_dir
 
-    parsed = parse_quartus_reports(reports_dir)
+    parsed = parse_quartus_reports(reports_dir, parsed_args.run_dir)
 
     output = parsed_args.output
     if output is None:

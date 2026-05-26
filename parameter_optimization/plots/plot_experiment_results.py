@@ -143,7 +143,10 @@ def correlation_matrix(rows, filename, plots_dir):
                 row_values.append(math.nan)
             else:
                 xs, ys = zip(*pairs)
-                row_values.append(float(np.corrcoef(xs, ys)[0, 1]))
+                if len(set(xs)) < 2 or len(set(ys)) < 2:
+                    row_values.append(math.nan)
+                else:
+                    row_values.append(float(np.corrcoef(xs, ys)[0, 1]))
         matrix.append(row_values)
 
     plt = get_matplotlib()

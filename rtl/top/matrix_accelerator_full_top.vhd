@@ -462,7 +462,8 @@ begin
     begin
         if rst = '1' then
             done_seen <= '0';
-            core_result_addr <= (others => '0';
+            core_result_addr <= (others => '0');
+
         elsif rising_edge(clk) then
             if host_rd_en = '1' then
                 core_result_addr <= host_rd_addr;

@@ -66,7 +66,7 @@ architecture rtl of matrix_accelerator_full_top is
     signal cmd_tx_byte  : std_logic_vector(7 downto 0);
     signal cmd_tx_busy  : std_logic;
 
-    signal uart_tx_start  : std_logic := '0';
+    signal uart_tx_start  : std_logic;
     signal uart_tx_byte   : std_logic_vector(7 downto 0);
     signal uart_tx_busy   : std_logic;
     signal uart_tx_serial : std_logic;
@@ -84,7 +84,9 @@ architecture rtl of matrix_accelerator_full_top is
     signal tx_byte_reg : std_logic_vector(7 downto 0) := (others => '0');
 
     signal cmd_start   : std_logic;
+    signal cmd_clear   : std_logic;
     signal accel_start : std_logic;
+    signal accel_rst   : std_logic;
     signal accel_busy  : std_logic;
     signal accel_done  : std_logic;
     signal done_seen   : std_logic := '0';
@@ -135,6 +137,7 @@ architecture rtl of matrix_accelerator_full_top is
     signal dbg_uart_tx_low_seen  : std_logic := '0';
     signal dbg_host_wr_seen      : std_logic := '0';
     signal dbg_cmd_start_seen    : std_logic := '0';
+    signal dbg_cmd_clear_seen    : std_logic := '0';
     signal dbg_done_seen         : std_logic := '0';
     signal dbg_error_seen        : std_logic := '0';
 
@@ -148,6 +151,7 @@ begin
     uart_tx_byte <= tx_byte_reg;
 
     accel_start <= start_button or cmd_start;
+    accel_rst   <= rst or cmd_clear;
 
     status_load_active    <= '0';
     status_compute_active <= accel_busy;
@@ -284,6 +288,7 @@ begin
             host_rd_addr             => host_rd_addr,
             host_data_out            => host_data_out,
             start                    => cmd_start,
+            clear                    => cmd_clear,
             perf_total_cycles        => perf_total_cycles,
             perf_load_cycles         => perf_load_cycles,
             perf_compute_cycles      => perf_compute_cycles,
@@ -309,7 +314,7 @@ begin
         )
         port map (
             clk         => clk,
-            rst         => rst,
+            rst         => accel_rst,
             wr_en       => host_wr_en,
             matrix_sel  => host_matrix_sel(0),
             wr_addr     => host_addr,
@@ -327,7 +332,7 @@ begin
         )
         port map (
             clk                   => clk,
-            rst                   => rst,
+            rst                   => accel_rst,
             start_count           => accel_start,
             stop_count            => accel_done,
             load_active           => status_load_active,
@@ -356,6 +361,7 @@ begin
             dbg_uart_tx_low_seen <= '0';
             dbg_host_wr_seen     <= '0';
             dbg_cmd_start_seen   <= '0';
+            dbg_cmd_clear_seen   <= '0';
             dbg_done_seen        <= '0';
             dbg_error_seen       <= '0';
 
@@ -395,6 +401,10 @@ begin
                 dbg_cmd_start_seen <= '1';
             end if;
 
+            if cmd_clear = '1' then
+                dbg_cmd_clear_seen <= '1';
+            end if;
+
             if accel_done = '1' or done_seen = '1' then
                 dbg_done_seen <= '1';
             end if;
@@ -416,7 +426,7 @@ begin
     LEDR(6) <= dbg_host_wr_seen;
     LEDR(7) <= dbg_cmd_start_seen;
     LEDR(8) <= dbg_done_seen;
-    LEDR(9) <= dbg_error_seen;
+    LEDR(9) <= dbg_error_seen or dbg_cmd_clear_seen;
 
     u_sigma_hex : entity work.sigma_hex_display
         port map (
@@ -445,7 +455,8 @@ begin
     debug_probe_data(13) <= tx_fifo_overflow;
     debug_probe_data(14) <= host_wr_en;
     debug_probe_data(15) <= host_rd_en;
-    debug_probe_data(17 downto 16) <= host_matrix_sel;
+    debug_probe_data(16) <= cmd_start;
+    debug_probe_data(17) <= cmd_clear;
     debug_probe_data(31 downto 18) <= std_logic_vector(resize(host_addr, 14));
     debug_probe_data(39 downto 32) <= cmd_rx_byte;
     debug_probe_data(47 downto 40) <= cmd_tx_byte;
@@ -461,7 +472,7 @@ begin
     debug_trigger_data(4) <= cmd_rx_valid;
     debug_trigger_data(5) <= host_wr_en;
     debug_trigger_data(6) <= host_rd_en;
-    debug_trigger_data(7) <= rx_fifo_overflow or tx_fifo_overflow;
+    debug_trigger_data(7) <= rx_fifo_overflow or tx_fifo_overflow or cmd_clear;
 
     gen_signaltap : if ENABLE_SIGNALTAP generate
         u_signaltap : entity work.signaltap_debug_core
@@ -486,14 +497,19 @@ begin
             core_result_addr <= (others => '0');
 
         elsif rising_edge(clk) then
-            if host_rd_en = '1' then
-                core_result_addr <= host_rd_addr;
-            end if;
-
-            if accel_start = '1' then
+            if cmd_clear = '1' then
                 done_seen <= '0';
-            elsif accel_done = '1' then
-                done_seen <= '1';
+                core_result_addr <= (others => '0');
+            else
+                if host_rd_en = '1' then
+                    core_result_addr <= host_rd_addr;
+                end if;
+
+                if accel_start = '1' then
+                    done_seen <= '0';
+                elsif accel_done = '1' then
+                    done_seen <= '1';
+                end if;
             end if;
         end if;
     end process;

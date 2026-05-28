@@ -23,7 +23,7 @@ entity matrix_accelerator_full_top is
         CLKS_PER_BIT        : positive := 434;
         CLK_FREQ_HZ         : positive := 50000000;
         UART_FIFO_DEPTH     : positive := 64;
-        ENABLE_SIGNALTAP : boolean := true
+        ENABLE_SIGNALTAP    : boolean := true
     );
     port (
         clk : in std_logic;
@@ -55,12 +55,12 @@ architecture rtl of matrix_accelerator_full_top is
     signal cmd_rx_ready : std_logic;
     signal cmd_rx_byte  : std_logic_vector(7 downto 0);
 
-    signal rx_fifo_rd_en      : std_logic;
-    signal rx_fifo_empty      : std_logic;
-    signal rx_fifo_full       : std_logic;
+    signal rx_fifo_rd_en       : std_logic;
+    signal rx_fifo_empty       : std_logic;
+    signal rx_fifo_full        : std_logic;
     signal rx_fifo_almost_full : std_logic;
-    signal rx_fifo_overflow   : std_logic;
-    signal rx_fifo_underflow  : std_logic;
+    signal rx_fifo_overflow    : std_logic;
+    signal rx_fifo_underflow   : std_logic;
 
     signal cmd_tx_start : std_logic;
     signal cmd_tx_byte  : std_logic_vector(7 downto 0);
@@ -70,13 +70,13 @@ architecture rtl of matrix_accelerator_full_top is
     signal uart_tx_byte  : std_logic_vector(7 downto 0);
     signal uart_tx_busy  : std_logic;
 
-    signal tx_fifo_rd_en      : std_logic;
-    signal tx_fifo_rd_data    : std_logic_vector(7 downto 0);
-    signal tx_fifo_empty      : std_logic;
-    signal tx_fifo_full       : std_logic;
+    signal tx_fifo_rd_en       : std_logic;
+    signal tx_fifo_rd_data     : std_logic_vector(7 downto 0);
+    signal tx_fifo_empty       : std_logic;
+    signal tx_fifo_full        : std_logic;
     signal tx_fifo_almost_full : std_logic;
-    signal tx_fifo_overflow   : std_logic;
-    signal tx_fifo_underflow  : std_logic;
+    signal tx_fifo_overflow    : std_logic;
+    signal tx_fifo_underflow   : std_logic;
 
     signal cmd_start   : std_logic;
     signal accel_start : std_logic;
@@ -92,7 +92,7 @@ architecture rtl of matrix_accelerator_full_top is
     signal host_rd_addr    : unsigned(ADDR_WIDTH-1 downto 0);
     signal host_data_out   : std_logic_vector(HOST_DATA_WIDTH-1 downto 0);
 
-    signal accel_data_out : signed(ACC_WIDTH-1 downto 0);
+    signal accel_data_out   : signed(ACC_WIDTH-1 downto 0);
     signal core_result_addr : unsigned(ADDR_WIDTH-1 downto 0) := (others => '0');
 
     signal perf_total_cycles        : unsigned(63 downto 0);
@@ -118,6 +118,32 @@ architecture rtl of matrix_accelerator_full_top is
     attribute preserve of debug_probe_data : signal is true;
     attribute preserve of debug_trigger_data : signal is true;
 
+    -- Debug por LED direto no top.
+    -- LEDR[0] = heartbeat
+    -- LEDR[1] = uart_rx_valid visto
+    -- LEDR[2] = cmd_rx_valid visto
+    -- LEDR[3] = cmd_tx_start visto
+    -- LEDR[4] = host_wr_en visto
+    -- LEDR[5] = cmd_start visto
+    -- LEDR[6] = accel_busy visto
+    -- LEDR[7] = accel_done visto
+    -- LEDR[8] = host_rd_en visto
+    -- LEDR[9] = erro FIFO ou SW1/start_button ligado
+    constant DBG_HEARTBEAT_TOGGLE_CYCLES : positive := CLK_FREQ_HZ / 2;
+
+    signal dbg_heartbeat_count : natural range 0 to DBG_HEARTBEAT_TOGGLE_CYCLES-1 := 0;
+    signal dbg_heartbeat_reg   : std_logic := '0';
+
+    signal dbg_uart_rx_seen   : std_logic := '0';
+    signal dbg_cmd_rx_seen    : std_logic := '0';
+    signal dbg_cmd_tx_seen    : std_logic := '0';
+    signal dbg_host_wr_seen   : std_logic := '0';
+    signal dbg_cmd_start_seen : std_logic := '0';
+    signal dbg_busy_seen      : std_logic := '0';
+    signal dbg_done_seen      : std_logic := '0';
+    signal dbg_host_rd_seen   : std_logic := '0';
+    signal dbg_error_seen     : std_logic := '0';
+
 begin
 
     assert N mod TILE_SIZE = 0
@@ -135,6 +161,7 @@ begin
     mac_ops_issued        <= to_unsigned(NUM_MACS, mac_ops_issued'length) when accel_busy = '1' else (others => '0');
 
     host_data_out <= std_logic_vector(resize(accel_data_out, HOST_DATA_WIDTH));
+
     rx_fifo_rd_en <= cmd_rx_ready and not rx_fifo_empty;
     cmd_rx_valid  <= rx_fifo_rd_en;
     cmd_tx_busy   <= tx_fifo_almost_full or tx_fifo_full;
@@ -293,28 +320,82 @@ begin
             num_mac_ops_issued    => perf_num_mac_ops_issued
         );
 
-    u_status_leds : entity work.accelerator_status_leds
-        generic map (
-            CLK_FREQ_HZ               => CLK_FREQ_HZ,
-            HEARTBEAT_HZ              => 1,
-            ACTIVITY_BLINK_HZ         => 4,
-            PULSE_STRETCH_CYCLES      => CLK_FREQ_HZ / 4,
-            USE_EXTERNAL_TILE_COUNTER => true
-        )
-        port map (
-            clk             => clk,
-            rst             => rst,
-            start           => accel_start,
-            busy            => accel_busy,
-            done            => accel_done,
-            load_active     => status_load_active,
-            compute_active  => status_compute_active,
-            store_active    => status_store_active,
-            tile_done       => status_tile_done,
-            error           => rx_fifo_overflow or tx_fifo_overflow,
-            tiles_processed => perf_num_tiles_processed(31 downto 0),
-            leds            => LEDR
-        );
+    -- Debug LEDs direto no top.
+    -- Nao instanciar accelerator_status_leds ao mesmo tempo, para evitar dois drivers em LEDR.
+    process(clk, rst)
+    begin
+        if rst = '1' then
+            dbg_heartbeat_count <= 0;
+            dbg_heartbeat_reg   <= '0';
+
+            dbg_uart_rx_seen   <= '0';
+            dbg_cmd_rx_seen    <= '0';
+            dbg_cmd_tx_seen    <= '0';
+            dbg_host_wr_seen   <= '0';
+            dbg_cmd_start_seen <= '0';
+            dbg_busy_seen      <= '0';
+            dbg_done_seen      <= '0';
+            dbg_host_rd_seen   <= '0';
+            dbg_error_seen     <= '0';
+
+        elsif rising_edge(clk) then
+            if dbg_heartbeat_count = DBG_HEARTBEAT_TOGGLE_CYCLES-1 then
+                dbg_heartbeat_count <= 0;
+                dbg_heartbeat_reg <= not dbg_heartbeat_reg;
+            else
+                dbg_heartbeat_count <= dbg_heartbeat_count + 1;
+            end if;
+
+            if uart_rx_valid = '1' then
+                dbg_uart_rx_seen <= '1';
+            end if;
+
+            if cmd_rx_valid = '1' then
+                dbg_cmd_rx_seen <= '1';
+            end if;
+
+            if cmd_tx_start = '1' then
+                dbg_cmd_tx_seen <= '1';
+            end if;
+
+            if host_wr_en = '1' then
+                dbg_host_wr_seen <= '1';
+            end if;
+
+            if cmd_start = '1' then
+                dbg_cmd_start_seen <= '1';
+            end if;
+
+            if accel_busy = '1' then
+                dbg_busy_seen <= '1';
+            end if;
+
+            if accel_done = '1' then
+                dbg_done_seen <= '1';
+            end if;
+
+            if host_rd_en = '1' then
+                dbg_host_rd_seen <= '1';
+            end if;
+
+            if rx_fifo_overflow = '1' or rx_fifo_underflow = '1' or
+               tx_fifo_overflow = '1' or tx_fifo_underflow = '1' or
+               start_button = '1' then
+                dbg_error_seen <= '1';
+            end if;
+        end if;
+    end process;
+
+    LEDR(0) <= dbg_heartbeat_reg;
+    LEDR(1) <= dbg_uart_rx_seen;
+    LEDR(2) <= dbg_cmd_rx_seen;
+    LEDR(3) <= dbg_cmd_tx_seen;
+    LEDR(4) <= dbg_host_wr_seen;
+    LEDR(5) <= dbg_cmd_start_seen;
+    LEDR(6) <= dbg_busy_seen;
+    LEDR(7) <= dbg_done_seen;
+    LEDR(8) <= dbg_host_rd_seen;
+    LEDR(9) <= dbg_error_seen;
 
     u_sigma_hex : entity work.sigma_hex_display
         port map (
@@ -381,7 +462,7 @@ begin
     begin
         if rst = '1' then
             done_seen <= '0';
-            core_result_addr <= (others => '0');
+            core_result_addr <= (others => '0';
         elsif rising_edge(clk) then
             if host_rd_en = '1' then
                 core_result_addr <= host_rd_addr;

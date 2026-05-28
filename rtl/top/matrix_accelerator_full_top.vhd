@@ -162,9 +162,6 @@ begin
     rx_fifo_rd_en <= cmd_rx_ready and not rx_fifo_empty;
     cmd_rx_valid  <= rx_fifo_rd_en;
 
-    -- TX FIFO ativa.
-    -- command_interface escreve respostas na FIFO.
-    -- Este controle drena a FIFO e só inicia uart_tx depois que tx_byte_reg está estável.
     cmd_tx_busy <= tx_fifo_almost_full or tx_fifo_full;
 
     u_uart_rx : entity work.uart_rx
@@ -247,15 +244,12 @@ begin
             case tx_state is
                 when TX_IDLE =>
                     if uart_tx_busy = '0' and tx_fifo_empty = '0' then
-                        -- FIFO show-ahead: rd_data contém o byte atual.
-                        -- Captura antes/de junto com o pop.
                         tx_byte_reg <= tx_fifo_rd_data;
                         tx_fifo_rd_en <= '1';
                         tx_state <= TX_START;
                     end if;
 
                 when TX_START =>
-                    -- Agora tx_byte_reg já está estável por um ciclo inteiro.
                     if uart_tx_busy = '0' then
                         uart_tx_start <= '1';
                         tx_state <= TX_IDLE;
@@ -426,7 +420,7 @@ begin
 
     u_sigma_hex : entity work.sigma_hex_display
         port map (
-            running => accel_busy,
+            running => '1',
             HEX0    => HEX0,
             HEX1    => HEX1,
             HEX2    => HEX2,

@@ -37,6 +37,7 @@ entity command_interface is
         host_data_out   : in std_logic_vector(DATA_WIDTH-1 downto 0);
 
         start : out std_logic;
+        clear : out std_logic;
 
         perf_total_cycles        : in unsigned(COUNTER_WIDTH-1 downto 0);
         perf_load_cycles         : in unsigned(COUNTER_WIDTH-1 downto 0);
@@ -51,6 +52,7 @@ architecture rtl of command_interface is
 
     constant CMD_LOAD_A        : std_logic_vector(7 downto 0) := x"41"; -- 'A'
     constant CMD_LOAD_B        : std_logic_vector(7 downto 0) := x"42"; -- 'B'
+    constant CMD_CLEAR         : std_logic_vector(7 downto 0) := x"43"; -- 'C'
     constant CMD_START         : std_logic_vector(7 downto 0) := x"53"; -- 'S'
     constant CMD_READ_C        : std_logic_vector(7 downto 0) := x"52"; -- 'R'
     constant CMD_READ_STATUS   : std_logic_vector(7 downto 0) := x"3F"; -- '?'
@@ -65,6 +67,7 @@ architecture rtl of command_interface is
         RECV_DATA,
         ISSUE_LOAD,
         ISSUE_START,
+        ISSUE_CLEAR,
         ISSUE_READ_C,
         WAIT_READ_C,
         PREP_STATUS,
@@ -96,6 +99,7 @@ architecture rtl of command_interface is
     signal host_rd_en_reg      : std_logic := '0';
     signal host_rd_addr_reg    : unsigned(ADDR_WIDTH-1 downto 0) := (others => '0');
     signal start_reg           : std_logic := '0';
+    signal clear_reg           : std_logic := '0';
 
     function low32(constant value : unsigned) return std_logic_vector is
         variable result : std_logic_vector(31 downto 0) := (others => '0');
@@ -121,11 +125,13 @@ begin
     host_rd_en      <= host_rd_en_reg;
     host_rd_addr    <= host_rd_addr_reg;
     start           <= start_reg;
-    rx_ready        <= '1' when state = IDLE or state = RECV_ADDR or state = RECV_DATA else '0';
+    clear           <= clear_reg;
+
+    rx_ready <= '1' when state = IDLE or state = RECV_ADDR or state = RECV_DATA else '0';
 
     process(clk, rst)
-        variable next_addr : std_logic_vector(31 downto 0);
-        variable next_data : std_logic_vector(31 downto 0);
+        variable next_addr  : std_logic_vector(31 downto 0);
+        variable next_data  : std_logic_vector(31 downto 0);
         variable status_word : std_logic_vector(31 downto 0);
     begin
         if rst = '1' then
@@ -147,12 +153,14 @@ begin
             host_rd_en_reg      <= '0';
             host_rd_addr_reg    <= (others => '0');
             start_reg           <= '0';
+            clear_reg           <= '0';
 
         elsif rising_edge(clk) then
             tx_start_reg   <= '0';
             host_wr_en_reg <= '0';
             host_rd_en_reg <= '0';
             start_reg      <= '0';
+            clear_reg      <= '0';
 
             case state is
                 when IDLE =>
@@ -168,6 +176,9 @@ begin
 
                         elsif rx_byte = CMD_START then
                             state <= ISSUE_START;
+
+                        elsif rx_byte = CMD_CLEAR then
+                            state <= ISSUE_CLEAR;
 
                         elsif rx_byte = CMD_READ_STATUS then
                             state <= PREP_STATUS;
@@ -230,6 +241,14 @@ begin
                 when ISSUE_START =>
                     if accelerator_busy = '0' then
                         start_reg <= '1';
+                        state     <= SEND_ACK;
+                    else
+                        state <= SEND_NAK;
+                    end if;
+
+                when ISSUE_CLEAR =>
+                    if accelerator_busy = '0' then
+                        clear_reg <= '1';
                         state     <= SEND_ACK;
                     else
                         state <= SEND_NAK;

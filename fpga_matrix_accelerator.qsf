@@ -212,7 +212,7 @@ set_parameter -name ACC_WIDTH 32
 set_parameter -name BUFFERING_MODE "single"
 set_parameter -name CLK_FREQ_HZ 50000000
 set_parameter -name CLKS_PER_BIT 434
-set_parameter -name DATA_WIDTH 16
+set_parameter -name DATA_WIDTH 8
 set_parameter -name DATAFLOW "output_stationary"
 set_parameter -name ENABLE_SIGNALTAP false
 set_parameter -name MAC_PIPELINE_STAGES 0
@@ -220,8 +220,8 @@ set_parameter -name MEM_TYPE "internal_fpga_ram"
 set_parameter -name MEMORY_BANKS_A 1
 set_parameter -name MEMORY_BANKS_B 1
 set_parameter -name MEMORY_BURST_LEN 1
-set_parameter -name N 128
-set_parameter -name NUM_MACS 4
-set_parameter -name TILE_SIZE 4
+set_parameter -name N 4
+set_parameter -name NUM_MACS 2
+set_parameter -name TILE_SIZE 2
 set_parameter -name UART_FIFO_DEPTH 64
 # <<< AUTO_GENERATED_GENERIC_PARAMETERS_END

@@ -287,7 +287,8 @@ $tests = @(
     "tb_uart_byte_fifo",
     "tb_sigma_hex_display",
     "tb_accelerator_status_leds",
-    "tb_matrix_accelerator_full_top"
+    "tb_matrix_accelerator_full_top",
+    "tb_matrix_accelerator_full_top_uart_protocol"
 )
 
 if ($Only -ne "") {

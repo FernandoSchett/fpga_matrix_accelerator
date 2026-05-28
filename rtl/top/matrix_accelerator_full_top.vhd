@@ -213,7 +213,7 @@ begin
             ADDR_WIDTH        => ADDR_WIDTH,
             DATA_WIDTH        => HOST_DATA_WIDTH,
             COUNTER_WIDTH     => 64,
-            HOST_READ_LATENCY => 2
+            HOST_READ_LATENCY => 3
         )
         port map (
             clk                      => clk,

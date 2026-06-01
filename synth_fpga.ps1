@@ -32,6 +32,29 @@ $QsfPath = Join-Path $ProjectDir "$ProjectName.qsf"
 
 Set-Location $ProjectDir
 
+function Assert-PositiveInt {
+    param(
+        [string]$Name,
+        [int]$Value
+    )
+
+    if ($Value -le 0) {
+        throw "$Name precisa ser maior que zero. Valor recebido: $Value"
+    }
+}
+
+function Test-AllowedValue {
+    param(
+        [string]$Name,
+        [string]$Value,
+        [string[]]$Allowed
+    )
+
+    if ($Allowed -notcontains $Value) {
+        throw "$Name invalido: '$Value'. Valores aceitos: $($Allowed -join ', ')"
+    }
+}
+
 function Find-QuartusTool {
     param([string]$Name)
 
@@ -128,8 +151,44 @@ function Invoke-Step {
     }
 }
 
+function Remove-PathBestEffort {
+    param(
+        [string]$Path,
+        [string]$Label,
+        [int]$MaxAttempts = 5,
+        [int]$RetrySeconds = 2
+    )
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return
+    }
+
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        try {
+            Write-Host "Removendo $Label..."
+            Remove-Item -Recurse -Force -LiteralPath $Path -ErrorAction Stop
+            return
+        }
+        catch {
+            if ($attempt -lt $MaxAttempts) {
+                Write-Warning "Nao consegui remover ${Label} na tentativa ${attempt}/${MaxAttempts}: $($_.Exception.Message)"
+                Write-Warning "Aguardando $RetrySeconds segundo(s) e tentando de novo..."
+                Start-Sleep -Seconds $RetrySeconds
+            } else {
+                Write-Warning "Nao consegui remover ${Label} apos ${MaxAttempts} tentativas: $($_.Exception.Message)"
+                Write-Warning "Continuando compilacao sem limpeza completa de $Label. Feche Quartus/Questa se o erro persistir."
+            }
+        }
+    }
+}
+
 function Update-PythonEnvFile {
     param([string]$EnvPath)
+
+    $envDir = Split-Path -Parent $EnvPath
+    if (-not (Test-Path -LiteralPath $envDir)) {
+        New-Item -ItemType Directory -Force -Path $envDir | Out-Null
+    }
 
     $content = @"
 N=$N
@@ -146,6 +205,29 @@ MATRIX_OUTPUT_DIR=matrix
     Set-Content -LiteralPath $EnvPath -Value $content -Encoding UTF8
     Write-Host "Atualizado .env do Python: $EnvPath"
 }
+
+Assert-PositiveInt -Name "N" -Value $N
+Assert-PositiveInt -Name "TileSize" -Value $TileSize
+Assert-PositiveInt -Name "NumMacs" -Value $NumMacs
+Assert-PositiveInt -Name "DataWidth" -Value $DataWidth
+Assert-PositiveInt -Name "AccWidth" -Value $AccWidth
+Assert-PositiveInt -Name "MemoryBurstLen" -Value $MemoryBurstLen
+Assert-PositiveInt -Name "MemoryBanksA" -Value $MemoryBanksA
+Assert-PositiveInt -Name "MemoryBanksB" -Value $MemoryBanksB
+Assert-PositiveInt -Name "ClksPerBit" -Value $ClksPerBit
+Assert-PositiveInt -Name "ClkFreqHz" -Value $ClkFreqHz
+Assert-PositiveInt -Name "UartFifoDepth" -Value $UartFifoDepth
+
+if (($N % $TileSize) -ne 0) {
+    throw "N precisa ser multiplo de TileSize. N=$N TileSize=$TileSize"
+}
+
+if ($MacPipelineStages -lt 0) {
+    throw "MacPipelineStages precisa ser >= 0. Valor recebido: $MacPipelineStages"
+}
+
+Test-AllowedValue -Name "BufferingMode" -Value $BufferingMode -Allowed @("single", "double")
+Test-AllowedValue -Name "EnableSignaltap" -Value $EnableSignaltap -Allowed @("true", "false")
 
 $generics = @{
     "N"                   = $N
@@ -179,12 +261,9 @@ if ($UpdatePythonEnv) {
 }
 
 if ($Clean) {
-    foreach ($dir in @("db", "incremental_db")) {
+    foreach ($dir in @("db", "incremental_db", "output_files")) {
         $path = Join-Path $ProjectDir $dir
-        if (Test-Path -LiteralPath $path) {
-            Write-Host "Removendo $dir..."
-            Remove-Item -Recurse -Force -LiteralPath $path
-        }
+        Remove-PathBestEffort -Path $path -Label $dir
     }
 }
 
@@ -210,6 +289,10 @@ if (Test-Path -LiteralPath $sofPath) {
 }
 
 if ($Program) {
+    if (-not (Test-Path -LiteralPath $sofPath)) {
+        throw "Nao posso programar a FPGA: SOF nao encontrado em $sofPath"
+    }
+
     $quartusPgm = Find-QuartusTool "quartus_pgm"
 
     Invoke-Step -Command @(

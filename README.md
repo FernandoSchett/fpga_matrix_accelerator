@@ -26,8 +26,8 @@ git submodule update --init --recursive
 
 - `rtl/common/`: pacotes, contadores de desempenho, LEDs de status e display `SIGMAX`.
 - `rtl/compute/`: MAC, compute core e multiplicador tiled.
-- `rtl/memory/`: RAM interna inferivel para A, B e C.
-- `rtl/control/`: interface de comandos do acelerador.
+- `rtl/memory/`: RAM interna, buffers M10K, mapa de matrizes e wrapper SDRAM.
+- `rtl/control/`: interface de comandos, memory manager, tile loader/writer e scheduler.
 - `rtl/uart/`: UART RX/TX e FIFO `SCFIFO`.
 - `rtl/debug/`: wrapper SignalTap.
 - `rtl/top/matrix_accelerator_full_top.vhd`: top-level da placa.
@@ -79,8 +79,6 @@ Rodar o sweep principal:
 .\parameter_optimization\run_experiment.ps1 -ConfigPath .\parameter_optimization\configs\01_compute_sweep.json
 ```
 
-Se parar no meio, rode o mesmo comando de novo. O runner retoma automaticamente: pula os runs ja consolidados, descarta o ultimo run existente e recomeca dele.
-
 Rodar todos os sweeps de `parameter_optimization/configs/` e comparar no final:
 
 ```powershell
@@ -99,7 +97,7 @@ Rodar host em dry-run:
 python .\py_matrix_host\main.py uart --dry-run --input .\py_matrix_host\matrix\matrix_inputs.txt --expected .\py_matrix_host\matrix\matrix_expected.txt
 ```
 
-## Parameter Optimization
+# Parameter Optimization
 
 Configuracoes:
 
@@ -134,20 +132,8 @@ Parametros conectados ao RTL atual:
 - `parameter_optimization/results/<experiment_name>/plots/`: graficos em PNG.
 - `parameter_optimization/results/compare_experiments/`: comparacao global dos sweeps.
 
-## Metricas Principais
+## SDRAM
 
-- `fmax_mhz`: frequencia maxima estimada pelo Quartus.
-- `exec_cycles`: ciclos medidos pelo testbench.
-- `gops_eff_exact`: GOPS efetivo usando contagem exata de operacoes.
-- `gops_eff_approx`: GOPS efetivo usando aproximacao `2 x N^3`.
-- `gops_peak`: pico teorico baseado em `NUM_MACS` e `fmax_mhz`.
-- `peak_efficiency`: eficiencia em relacao ao pico teorico.
-- `resource_pressure_pct`: pressao maxima entre ALMs, DSPs, memoria e pinos.
-- `routing_pressure_score`: indicador heuristico de risco de roteamento.
-- `performance_per_resource_score`: desempenho normalizado por pressao de recurso.
-
-## Observacoes
-
-- A UART fisica ainda depende do pin assignment do adaptador usado.
-- Os displays `HEX5..HEX0` mostram `SIGMAX` enquanto o acelerador esta ocupado.
-- `LEDR` mostra heartbeat, busy, compute, progresso, done e erro.
+- `rtl/SDRAM_ARCHITECTURE.md`: plano da arquitetura SDRAM + M10K.
+- `rtl/memory/sdram_controller_wrapper.vhd`: stub para futuro IP SDRAM do Quartus/Platform Designer.
+- `rtl/control/memory_manager.vhd`: arbitra UART/host, loader e writer no barramento SDRAM.

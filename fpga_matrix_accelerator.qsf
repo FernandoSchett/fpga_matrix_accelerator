@@ -31,9 +31,17 @@ set_global_assignment -name VHDL_FILE rtl/common/matrix_accel_config_pkg.vhd
 set_global_assignment -name VHDL_FILE rtl/common/perf_counters.vhd
 set_global_assignment -name VHDL_FILE rtl/common/accelerator_status_leds.vhd
 set_global_assignment -name VHDL_FILE rtl/common/sigma_hex_display.vhd
+set_global_assignment -name VHDL_FILE rtl/memory/sdram_bus_if.vhd
 set_global_assignment -name VHDL_FILE rtl/compute/mac_unit.vhd
 set_global_assignment -name VHDL_FILE rtl/compute/matrix_tiled_compute_core.vhd
 set_global_assignment -name VHDL_FILE rtl/memory/matrix_single_port_ram.vhd
+set_global_assignment -name VHDL_FILE rtl/memory/matrix_memory_map.vhd
+set_global_assignment -name VHDL_FILE rtl/memory/tile_buffer_m10k.vhd
+set_global_assignment -name VHDL_FILE rtl/memory/sdram_controller_wrapper.vhd
+set_global_assignment -name VHDL_FILE rtl/control/memory_manager.vhd
+set_global_assignment -name VHDL_FILE rtl/control/tile_loader.vhd
+set_global_assignment -name VHDL_FILE rtl/control/tile_writer.vhd
+set_global_assignment -name VHDL_FILE rtl/control/sdram_tile_scheduler.vhd
 set_global_assignment -name VHDL_FILE rtl/control/command_interface.vhd
 set_global_assignment -name VHDL_FILE rtl/uart/uart_rx.vhd
 set_global_assignment -name VHDL_FILE rtl/uart/uart_tx.vhd

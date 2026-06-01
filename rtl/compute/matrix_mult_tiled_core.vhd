@@ -99,6 +99,7 @@ architecture rtl of matrix_mult_tiled_core is
 
     signal core_start : std_logic := '0';
     signal core_done  : std_logic;
+    signal core_mac_ops_issued_unused : unsigned(31 downto 0);
 
     signal core_a_tile     : std_logic_vector((TILE_ELEMS*DATA_WIDTH)-1 downto 0);
     signal core_b_tile     : std_logic_vector((TILE_ELEMS*DATA_WIDTH)-1 downto 0);
@@ -251,7 +252,8 @@ begin
             a_tile     => core_a_tile,
             b_tile     => core_b_tile,
             c_tile_in  => core_c_tile_in,
-            c_tile_out => core_c_tile_out
+            c_tile_out => core_c_tile_out,
+            mac_ops_issued => core_mac_ops_issued_unused
         );
 
     process(clk, rst)

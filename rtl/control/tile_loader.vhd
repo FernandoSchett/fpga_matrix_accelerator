@@ -14,6 +14,7 @@ entity tile_loader is
         ACC_WIDTH      : positive := 32;
         SDRAM_ADDR_W   : positive := 25;
         SDRAM_DATA_W   : positive := 32;
+        ACCUMULATE_C   : boolean := false;
         BASE_A_BYTES   : natural := 0;
         BASE_B_BYTES   : natural := 0;
         BASE_C_BYTES   : natural := 0
@@ -55,7 +56,7 @@ end entity tile_loader;
 
 architecture rtl of tile_loader is
 
-    type state_t is (IDLE, REQ_A, WAIT_A, REQ_B, WAIT_B, REQ_C, WAIT_C, DONE_STATE);
+    type state_t is (IDLE, REQ_A, WAIT_A, REQ_B, WAIT_B, INIT_C_ZERO, REQ_C, WAIT_C, DONE_STATE);
 
     function select_base(configured_base : natural; default_base : natural) return natural is
     begin
@@ -177,13 +178,30 @@ begin
                         b_wr_col  <= to_unsigned(lc, LOCAL_W);
                         b_wr_data <= signed(mem_rd_data(DATA_WIDTH-1 downto 0));
                         if load_c = '1' then
-                            state <= REQ_C;
+                            if ACCUMULATE_C then
+                                state <= REQ_C;
+                            else
+                                state <= INIT_C_ZERO;
+                            end if;
                         elsif elem_idx = TILE_ELEMS-1 then
                             state <= DONE_STATE;
                         else
                             elem_idx <= elem_idx + 1;
                             state    <= REQ_A;
                         end if;
+                    end if;
+
+                when INIT_C_ZERO =>
+                    busy      <= '1';
+                    c_wr_en   <= '1';
+                    c_wr_row  <= to_unsigned(lr, LOCAL_W);
+                    c_wr_col  <= to_unsigned(lc, LOCAL_W);
+                    c_wr_data <= (others => '0');
+                    if elem_idx = TILE_ELEMS-1 then
+                        state <= DONE_STATE;
+                    else
+                        elem_idx <= elem_idx + 1;
+                        state    <= REQ_A;
                     end if;
 
                 when REQ_C =>

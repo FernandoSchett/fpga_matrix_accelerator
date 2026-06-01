@@ -24,6 +24,7 @@ architecture sim of tb_tile_compute_engine is
     signal b_t2_m1     : std_logic_vector((TILE2*TILE2*DATA_WIDTH)-1 downto 0) := (others => '0');
     signal c_in_t2_m1  : std_logic_vector((TILE2*TILE2*ACC_WIDTH)-1 downto 0) := (others => '0');
     signal c_out_t2_m1 : std_logic_vector((TILE2*TILE2*ACC_WIDTH)-1 downto 0);
+    signal mac_ops_t2_m1 : unsigned(31 downto 0);
 
     signal start_t2_m2 : std_logic := '0';
     signal done_t2_m2  : std_logic;
@@ -31,6 +32,7 @@ architecture sim of tb_tile_compute_engine is
     signal b_t2_m2     : std_logic_vector((TILE2*TILE2*DATA_WIDTH)-1 downto 0) := (others => '0');
     signal c_in_t2_m2  : std_logic_vector((TILE2*TILE2*ACC_WIDTH)-1 downto 0) := (others => '0');
     signal c_out_t2_m2 : std_logic_vector((TILE2*TILE2*ACC_WIDTH)-1 downto 0);
+    signal mac_ops_t2_m2 : unsigned(31 downto 0);
 
     signal start_t4_m4 : std_logic := '0';
     signal done_t4_m4  : std_logic;
@@ -38,6 +40,7 @@ architecture sim of tb_tile_compute_engine is
     signal b_t4_m4     : std_logic_vector((TILE4*TILE4*DATA_WIDTH)-1 downto 0) := (others => '0');
     signal c_in_t4_m4  : std_logic_vector((TILE4*TILE4*ACC_WIDTH)-1 downto 0) := (others => '0');
     signal c_out_t4_m4 : std_logic_vector((TILE4*TILE4*ACC_WIDTH)-1 downto 0);
+    signal mac_ops_t4_m4 : unsigned(31 downto 0);
 
     function a_value(row_idx : natural; col_idx : natural; tile_size : positive) return integer is
     begin
@@ -206,7 +209,8 @@ begin
             a_tile     => a_t2_m1,
             b_tile     => b_t2_m1,
             c_tile_in  => c_in_t2_m1,
-            c_tile_out => c_out_t2_m1
+            c_tile_out => c_out_t2_m1,
+            mac_ops_issued => mac_ops_t2_m1
         );
 
     dut_t2_m2 : entity work.matrix_tiled_compute_core
@@ -224,7 +228,8 @@ begin
             a_tile     => a_t2_m2,
             b_tile     => b_t2_m2,
             c_tile_in  => c_in_t2_m2,
-            c_tile_out => c_out_t2_m2
+            c_tile_out => c_out_t2_m2,
+            mac_ops_issued => mac_ops_t2_m2
         );
 
     dut_t4_m4 : entity work.matrix_tiled_compute_core
@@ -242,7 +247,8 @@ begin
             a_tile     => a_t4_m4,
             b_tile     => b_t4_m4,
             c_tile_in  => c_in_t4_m4,
-            c_tile_out => c_out_t4_m4
+            c_tile_out => c_out_t4_m4,
+            mac_ops_issued => mac_ops_t4_m4
         );
 
     stim_proc : process

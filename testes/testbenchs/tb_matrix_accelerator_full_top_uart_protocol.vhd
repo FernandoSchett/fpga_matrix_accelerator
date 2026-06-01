@@ -57,6 +57,17 @@ architecture sim of tb_matrix_accelerator_full_top_uart_protocol is
     signal HEX3 : std_logic_vector(6 downto 0);
     signal HEX4 : std_logic_vector(6 downto 0);
     signal HEX5 : std_logic_vector(6 downto 0);
+    signal DRAM_ADDR  : std_logic_vector(12 downto 0);
+    signal DRAM_BA    : std_logic_vector(1 downto 0);
+    signal DRAM_CAS_N : std_logic;
+    signal DRAM_CKE   : std_logic;
+    signal DRAM_CLK   : std_logic;
+    signal DRAM_CS_N  : std_logic;
+    signal DRAM_DQ    : std_logic_vector(15 downto 0);
+    signal DRAM_LDQM  : std_logic;
+    signal DRAM_RAS_N : std_logic;
+    signal DRAM_UDQM  : std_logic;
+    signal DRAM_WE_N  : std_logic;
 
     function a_value(
         constant row_idx : natural;
@@ -248,6 +259,7 @@ begin
             CLKS_PER_BIT        => CLKS_PER_BIT,
             CLK_FREQ_HZ         => CLK_FREQ_HZ,
             UART_FIFO_DEPTH     => UART_FIFO_DEPTH,
+            SDRAM_SIMULATION_MODEL => true,
             ENABLE_SIGNALTAP    => false
         )
         port map (
@@ -262,7 +274,18 @@ begin
             HEX2         => HEX2,
             HEX3         => HEX3,
             HEX4         => HEX4,
-            HEX5         => HEX5
+            HEX5         => HEX5,
+            DRAM_ADDR    => DRAM_ADDR,
+            DRAM_BA      => DRAM_BA,
+            DRAM_CAS_N   => DRAM_CAS_N,
+            DRAM_CKE     => DRAM_CKE,
+            DRAM_CLK     => DRAM_CLK,
+            DRAM_CS_N    => DRAM_CS_N,
+            DRAM_DQ      => DRAM_DQ,
+            DRAM_LDQM    => DRAM_LDQM,
+            DRAM_RAS_N   => DRAM_RAS_N,
+            DRAM_UDQM    => DRAM_UDQM,
+            DRAM_WE_N    => DRAM_WE_N
         );
 
     stim_proc : process

@@ -48,6 +48,7 @@ set_global_assignment -name VHDL_FILE rtl/uart/uart_tx.vhd
 set_global_assignment -name VHDL_FILE rtl/uart/uart_byte_fifo.vhd
 set_global_assignment -name VHDL_FILE rtl/debug/signaltap_debug_core.vhd
 set_global_assignment -name VHDL_FILE rtl/compute/matrix_mult_tiled_core.vhd
+set_global_assignment -name VHDL_FILE rtl/compute/matrix_mult_sdram_tiled_core.vhd
 set_global_assignment -name VHDL_FILE rtl/top/matrix_accelerator_full_top.vhd
 
 # -----------------------------
@@ -80,6 +81,93 @@ set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to uart_rx_i
 
 set_location_assignment PIN_B16 -to uart_tx_o
 set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to uart_tx_o
+
+# -----------------------------
+# External SDRAM (DE0-CV)
+# -----------------------------
+set_location_assignment PIN_W8 -to DRAM_ADDR[0]
+set_location_assignment PIN_T8 -to DRAM_ADDR[1]
+set_location_assignment PIN_U11 -to DRAM_ADDR[2]
+set_location_assignment PIN_Y10 -to DRAM_ADDR[3]
+set_location_assignment PIN_N6 -to DRAM_ADDR[4]
+set_location_assignment PIN_AB10 -to DRAM_ADDR[5]
+set_location_assignment PIN_P12 -to DRAM_ADDR[6]
+set_location_assignment PIN_P7 -to DRAM_ADDR[7]
+set_location_assignment PIN_P8 -to DRAM_ADDR[8]
+set_location_assignment PIN_R5 -to DRAM_ADDR[9]
+set_location_assignment PIN_U8 -to DRAM_ADDR[10]
+set_location_assignment PIN_P6 -to DRAM_ADDR[11]
+set_location_assignment PIN_R7 -to DRAM_ADDR[12]
+
+set_location_assignment PIN_Y9 -to DRAM_DQ[0]
+set_location_assignment PIN_T10 -to DRAM_DQ[1]
+set_location_assignment PIN_R9 -to DRAM_DQ[2]
+set_location_assignment PIN_Y11 -to DRAM_DQ[3]
+set_location_assignment PIN_R10 -to DRAM_DQ[4]
+set_location_assignment PIN_R11 -to DRAM_DQ[5]
+set_location_assignment PIN_R12 -to DRAM_DQ[6]
+set_location_assignment PIN_AA12 -to DRAM_DQ[7]
+set_location_assignment PIN_AA9 -to DRAM_DQ[8]
+set_location_assignment PIN_AB8 -to DRAM_DQ[9]
+set_location_assignment PIN_AA8 -to DRAM_DQ[10]
+set_location_assignment PIN_AA7 -to DRAM_DQ[11]
+set_location_assignment PIN_V10 -to DRAM_DQ[12]
+set_location_assignment PIN_V9 -to DRAM_DQ[13]
+set_location_assignment PIN_U10 -to DRAM_DQ[14]
+set_location_assignment PIN_T9 -to DRAM_DQ[15]
+
+set_location_assignment PIN_T7 -to DRAM_BA[0]
+set_location_assignment PIN_AB7 -to DRAM_BA[1]
+set_location_assignment PIN_U12 -to DRAM_LDQM
+set_location_assignment PIN_N8 -to DRAM_UDQM
+set_location_assignment PIN_AB6 -to DRAM_RAS_N
+set_location_assignment PIN_V6 -to DRAM_CAS_N
+set_location_assignment PIN_R6 -to DRAM_CKE
+set_location_assignment PIN_AB11 -to DRAM_CLK
+set_location_assignment PIN_AB5 -to DRAM_WE_N
+set_location_assignment PIN_U6 -to DRAM_CS_N
+
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DRAM_ADDR[0]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DRAM_ADDR[1]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DRAM_ADDR[2]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DRAM_ADDR[3]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DRAM_ADDR[4]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DRAM_ADDR[5]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DRAM_ADDR[6]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DRAM_ADDR[7]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DRAM_ADDR[8]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DRAM_ADDR[9]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DRAM_ADDR[10]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DRAM_ADDR[11]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DRAM_ADDR[12]
+
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DRAM_DQ[0]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DRAM_DQ[1]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DRAM_DQ[2]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DRAM_DQ[3]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DRAM_DQ[4]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DRAM_DQ[5]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DRAM_DQ[6]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DRAM_DQ[7]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DRAM_DQ[8]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DRAM_DQ[9]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DRAM_DQ[10]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DRAM_DQ[11]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DRAM_DQ[12]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DRAM_DQ[13]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DRAM_DQ[14]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DRAM_DQ[15]
+
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DRAM_BA[0]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DRAM_BA[1]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DRAM_LDQM
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DRAM_UDQM
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DRAM_RAS_N
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DRAM_CAS_N
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DRAM_CKE
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DRAM_CLK
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DRAM_WE_N
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DRAM_CS_N
 
 # -----------------------------
 # LEDs
@@ -217,6 +305,7 @@ set_instance_assignment -name PARTITION_HIERARCHY root_partition -to | -section_
 # Generated by synth_fpga.ps1
 # These values override top-level VHDL generics for Quartus compilation.
 set_parameter -name ACC_WIDTH 32
+set_parameter -name ACCUMULATE_C false
 set_parameter -name BUFFERING_MODE "single"
 set_parameter -name CLK_FREQ_HZ 50000000
 set_parameter -name CLKS_PER_BIT 50
@@ -224,12 +313,15 @@ set_parameter -name DATA_WIDTH 8
 set_parameter -name DATAFLOW "output_stationary"
 set_parameter -name ENABLE_SIGNALTAP false
 set_parameter -name MAC_PIPELINE_STAGES 0
-set_parameter -name MEM_TYPE "internal_fpga_ram"
+set_parameter -name MEM_TYPE "external_sdram"
 set_parameter -name MEMORY_BANKS_A 1
 set_parameter -name MEMORY_BANKS_B 1
 set_parameter -name MEMORY_BURST_LEN 1
 set_parameter -name N 128
 set_parameter -name NUM_MACS 4
+set_parameter -name SDRAM_ADDR_W 26
+set_parameter -name SDRAM_DATA_W 32
+set_parameter -name SDRAM_SIMULATION_MODEL false
 set_parameter -name TILE_SIZE 4
 set_parameter -name UART_FIFO_DEPTH 64
 # <<< AUTO_GENERATED_GENERIC_PARAMETERS_END

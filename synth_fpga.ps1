@@ -5,7 +5,7 @@ param(
     [int]$DataWidth = 8,
     [int]$AccWidth = 32,
 
-    [string]$MemType = "internal_fpga_ram",
+    [string]$MemType = "external_sdram",
     [string]$Dataflow = "output_stationary",
     [string]$BufferingMode = "single",
     [int]$MemoryBurstLen = 1,
@@ -16,6 +16,10 @@ param(
     [int]$ClksPerBit = 434,
     [int]$ClkFreqHz = 50000000,
     [int]$UartFifoDepth = 64,
+    [int]$SdramAddrWidth = 26,
+    [int]$SdramDataWidth = 32,
+    [string]$SdramSimulationModel = "false",
+    [string]$AccumulateC = "false",
     [string]$EnableSignaltap = "false",
 
     [switch]$Clean,
@@ -217,6 +221,8 @@ Assert-PositiveInt -Name "MemoryBanksB" -Value $MemoryBanksB
 Assert-PositiveInt -Name "ClksPerBit" -Value $ClksPerBit
 Assert-PositiveInt -Name "ClkFreqHz" -Value $ClkFreqHz
 Assert-PositiveInt -Name "UartFifoDepth" -Value $UartFifoDepth
+Assert-PositiveInt -Name "SdramAddrWidth" -Value $SdramAddrWidth
+Assert-PositiveInt -Name "SdramDataWidth" -Value $SdramDataWidth
 
 if (($N % $TileSize) -ne 0) {
     throw "N precisa ser multiplo de TileSize. N=$N TileSize=$TileSize"
@@ -228,6 +234,8 @@ if ($MacPipelineStages -lt 0) {
 
 Test-AllowedValue -Name "BufferingMode" -Value $BufferingMode -Allowed @("single", "double")
 Test-AllowedValue -Name "EnableSignaltap" -Value $EnableSignaltap -Allowed @("true", "false")
+Test-AllowedValue -Name "SdramSimulationModel" -Value $SdramSimulationModel -Allowed @("true", "false")
+Test-AllowedValue -Name "AccumulateC" -Value $AccumulateC -Allowed @("true", "false")
 
 $generics = @{
     "N"                   = $N
@@ -245,6 +253,10 @@ $generics = @{
     "CLKS_PER_BIT"        = $ClksPerBit
     "CLK_FREQ_HZ"         = $ClkFreqHz
     "UART_FIFO_DEPTH"     = $UartFifoDepth
+    "SDRAM_ADDR_W"        = $SdramAddrWidth
+    "SDRAM_DATA_W"        = $SdramDataWidth
+    "SDRAM_SIMULATION_MODEL" = $SdramSimulationModel
+    "ACCUMULATE_C"        = $AccumulateC
     "ENABLE_SIGNALTAP"    = $EnableSignaltap
 }
 

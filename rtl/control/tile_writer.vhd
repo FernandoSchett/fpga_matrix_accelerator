@@ -41,7 +41,7 @@ end entity tile_writer;
 
 architecture rtl of tile_writer is
 
-    type state_t is (IDLE, SETUP_READ, ISSUE_WRITE, DONE_STATE);
+    type state_t is (IDLE, SETUP_READ, WAIT_READ, ISSUE_WRITE, DONE_STATE);
 
     function select_base(configured_base : natural; default_base : natural) return natural is
     begin
@@ -125,7 +125,11 @@ begin
                     busy     <= '1';
                     c_rd_row <= to_unsigned(lr, LOCAL_W);
                     c_rd_col <= to_unsigned(lc, LOCAL_W);
-                    state    <= ISSUE_WRITE;
+                    state    <= WAIT_READ;
+
+                when WAIT_READ =>
+                    busy  <= '1';
+                    state <= ISSUE_WRITE;
 
                 when ISSUE_WRITE =>
                     busy        <= '1';

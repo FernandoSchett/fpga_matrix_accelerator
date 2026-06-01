@@ -23,6 +23,10 @@ entity matrix_accelerator_full_top is
         CLKS_PER_BIT        : positive := 434;
         CLK_FREQ_HZ         : positive := 50000000;
         UART_FIFO_DEPTH     : positive := 64;
+        SDRAM_ADDR_W        : positive := 26;
+        SDRAM_DATA_W        : positive := 32;
+        SDRAM_SIMULATION_MODEL : boolean := false;
+        ACCUMULATE_C        : boolean := false;
         ENABLE_SIGNALTAP    : boolean := true
     );
     port (
@@ -39,7 +43,19 @@ entity matrix_accelerator_full_top is
         HEX2         : out std_logic_vector(6 downto 0);
         HEX3         : out std_logic_vector(6 downto 0);
         HEX4         : out std_logic_vector(6 downto 0);
-        HEX5         : out std_logic_vector(6 downto 0)
+        HEX5         : out std_logic_vector(6 downto 0);
+
+        DRAM_ADDR  : out std_logic_vector(12 downto 0);
+        DRAM_BA    : out std_logic_vector(1 downto 0);
+        DRAM_CAS_N : out std_logic;
+        DRAM_CKE   : out std_logic;
+        DRAM_CLK   : out std_logic;
+        DRAM_CS_N  : out std_logic;
+        DRAM_DQ    : inout std_logic_vector(15 downto 0);
+        DRAM_LDQM  : out std_logic;
+        DRAM_RAS_N : out std_logic;
+        DRAM_UDQM  : out std_logic;
+        DRAM_WE_N  : out std_logic
     );
 end entity matrix_accelerator_full_top;
 
@@ -100,7 +116,6 @@ architecture rtl of matrix_accelerator_full_top is
     signal host_data_out   : std_logic_vector(HOST_DATA_WIDTH-1 downto 0);
 
     signal accel_data_out   : signed(ACC_WIDTH-1 downto 0);
-    signal core_result_addr : unsigned(ADDR_WIDTH-1 downto 0) := (others => '0');
 
     signal perf_total_cycles        : unsigned(63 downto 0);
     signal perf_load_cycles         : unsigned(63 downto 0);
@@ -152,14 +167,6 @@ begin
 
     accel_start <= start_button or cmd_start;
     accel_rst   <= rst or cmd_clear;
-
-    status_load_active    <= '0';
-    status_compute_active <= accel_busy;
-    status_store_active   <= '0';
-    status_tile_done      <= accel_done;
-
-    mac_ops_issued <= to_unsigned(NUM_MACS, mac_ops_issued'length) when accel_busy = '1' else
-                      (others => '0');
 
     host_data_out <= std_logic_vector(resize(accel_data_out, HOST_DATA_WIDTH));
 
@@ -267,7 +274,7 @@ begin
             ADDR_WIDTH        => ADDR_WIDTH,
             DATA_WIDTH        => HOST_DATA_WIDTH,
             COUNTER_WIDTH     => 64,
-            HOST_READ_LATENCY => 3
+            HOST_READ_LATENCY => 6
         )
         port map (
             clk                      => clk,
@@ -297,33 +304,48 @@ begin
             perf_num_mac_ops_issued  => perf_num_mac_ops_issued
         );
 
-    u_core : entity work.matrix_mult_tiled_core
+    u_core : entity work.matrix_mult_sdram_tiled_core
         generic map (
             N                   => N,
             TILE_SIZE           => TILE_SIZE,
             NUM_MACS            => NUM_MACS,
             DATA_WIDTH          => DATA_WIDTH,
             ACC_WIDTH           => ACC_WIDTH,
-            MEM_TYPE            => MEM_TYPE,
-            DATAFLOW            => DATAFLOW,
-            BUFFERING_MODE      => BUFFERING_MODE,
-            MEMORY_BURST_LEN    => MEMORY_BURST_LEN,
-            MAC_PIPELINE_STAGES => MAC_PIPELINE_STAGES,
-            MEMORY_BANKS_A      => MEMORY_BANKS_A,
-            MEMORY_BANKS_B      => MEMORY_BANKS_B
+            SDRAM_ADDR_W        => SDRAM_ADDR_W,
+            SDRAM_DATA_W        => SDRAM_DATA_W,
+            SDRAM_SIMULATION_MODEL => SDRAM_SIMULATION_MODEL,
+            ACCUMULATE_C        => ACCUMULATE_C,
+            MAC_PIPELINE_STAGES => MAC_PIPELINE_STAGES
         )
         port map (
             clk         => clk,
             rst         => accel_rst,
             wr_en       => host_wr_en,
-            matrix_sel  => host_matrix_sel(0),
+            matrix_sel  => host_matrix_sel,
             wr_addr     => host_addr,
             data_in     => signed(host_data_in(DATA_WIDTH-1 downto 0)),
+            rd_en       => host_rd_en,
+            rd_addr     => host_rd_addr,
+            data_out    => accel_data_out,
             start       => accel_start,
             busy        => accel_busy,
             done        => accel_done,
-            result_addr => core_result_addr,
-            data_out    => accel_data_out
+            load_active    => status_load_active,
+            compute_active => status_compute_active,
+            store_active   => status_store_active,
+            tile_done      => status_tile_done,
+            mac_ops_issued => mac_ops_issued,
+            dram_addr  => DRAM_ADDR,
+            dram_ba    => DRAM_BA,
+            dram_cas_n => DRAM_CAS_N,
+            dram_cke   => DRAM_CKE,
+            dram_clk   => DRAM_CLK,
+            dram_cs_n  => DRAM_CS_N,
+            dram_dq    => DRAM_DQ,
+            dram_ldqm  => DRAM_LDQM,
+            dram_ras_n => DRAM_RAS_N,
+            dram_udqm  => DRAM_UDQM,
+            dram_we_n  => DRAM_WE_N
         );
 
     u_perf : entity work.perf_counters
@@ -430,7 +452,7 @@ begin
 
     u_sigma_hex : entity work.sigma_hex_display
         port map (
-            running => '1',
+            running => accel_busy,
             HEX0    => HEX0,
             HEX1    => HEX1,
             HEX2    => HEX2,
@@ -494,17 +516,11 @@ begin
     begin
         if rst = '1' then
             done_seen <= '0';
-            core_result_addr <= (others => '0');
 
         elsif rising_edge(clk) then
             if cmd_clear = '1' then
                 done_seen <= '0';
-                core_result_addr <= (others => '0');
             else
-                if host_rd_en = '1' then
-                    core_result_addr <= host_rd_addr;
-                end if;
-
                 if accel_start = '1' then
                     done_seen <= '0';
                 elsif accel_done = '1' then

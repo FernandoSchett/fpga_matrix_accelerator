@@ -20,7 +20,8 @@ entity matrix_tiled_compute_core is
         a_tile      : in std_logic_vector((TILE_SIZE*TILE_SIZE*DATA_WIDTH)-1 downto 0);
         b_tile      : in std_logic_vector((TILE_SIZE*TILE_SIZE*DATA_WIDTH)-1 downto 0);
         c_tile_in   : in std_logic_vector((TILE_SIZE*TILE_SIZE*ACC_WIDTH)-1 downto 0);
-        c_tile_out  : out std_logic_vector((TILE_SIZE*TILE_SIZE*ACC_WIDTH)-1 downto 0)
+        c_tile_out  : out std_logic_vector((TILE_SIZE*TILE_SIZE*ACC_WIDTH)-1 downto 0);
+        mac_ops_issued : out unsigned(31 downto 0)
     );
 end entity matrix_tiled_compute_core;
 
@@ -71,6 +72,7 @@ architecture rtl of matrix_tiled_compute_core is
     signal lane_acc_out : acc_lane_t;
 
     signal done_reg : std_logic := '0';
+    signal mac_ops_issued_reg : unsigned(31 downto 0) := (others => '0');
 
     function get_data(
         constant flat : std_logic_vector;
@@ -112,6 +114,7 @@ begin
 
     done <= done_reg;
     c_tile_out <= pack_acc_tile(c_acc);
+    mac_ops_issued <= mac_ops_issued_reg;
 
     gen_lanes : for lane in 0 to NUM_MACS-1 generate
     begin
@@ -167,8 +170,11 @@ begin
             base_pipe  <= (others => 0);
             valid_pipe <= (others => '0');
             done_reg  <= '0';
+            mac_ops_issued_reg <= (others => '0');
 
         elsif rising_edge(clk) then
+            mac_ops_issued_reg <= (others => '0');
+
             if MAC_PIPELINE_STAGES = 0 then
                 commit_base  := elem_base;
                 base_pipe    <= (others => 0);
@@ -217,6 +223,12 @@ begin
                     end if;
 
                 when RUN =>
+                    if elem_base + NUM_MACS >= TILE_ELEMS then
+                        mac_ops_issued_reg <= to_unsigned(TILE_ELEMS - elem_base, mac_ops_issued_reg'length);
+                    else
+                        mac_ops_issued_reg <= to_unsigned(NUM_MACS, mac_ops_issued_reg'length);
+                    end if;
+
                     if commit_valid = '1' then
                         for lane in 0 to NUM_MACS-1 loop
                             out_idx := commit_base + lane;

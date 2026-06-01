@@ -204,6 +204,7 @@ function Get-RtlSources {
         "rtl/control/tile_writer.vhd",
         "rtl/control/sdram_tile_scheduler.vhd",
         "rtl/compute/matrix_mult_tiled_core.vhd",
+        "rtl/compute/matrix_mult_sdram_tiled_core.vhd",
         "rtl/control/command_interface.vhd",
         "rtl/uart/uart_rx.vhd",
         "rtl/uart/uart_tx.vhd",

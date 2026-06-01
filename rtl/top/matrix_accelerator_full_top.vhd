@@ -434,8 +434,7 @@ begin
             end if;
 
             if rx_fifo_overflow = '1' or rx_fifo_underflow = '1' or
-               tx_fifo_overflow = '1' or tx_fifo_underflow = '1' or
-               start_button = '1' then
+            tx_fifo_overflow = '1' or tx_fifo_underflow = '1' then
                 dbg_error_seen <= '1';
             end if;
         end if;
@@ -444,13 +443,13 @@ begin
     LEDR(0) <= dbg_heartbeat_reg;
     LEDR(1) <= dbg_uart_rx_seen;
     LEDR(2) <= dbg_cmd_rx_seen;
-    LEDR(3) <= dbg_cmd_tx_seen;
-    LEDR(4) <= dbg_uart_tx_seen;
-    LEDR(5) <= dbg_uart_tx_low_seen;
-    LEDR(6) <= dbg_host_wr_seen;
-    LEDR(7) <= dbg_cmd_start_seen;
-    LEDR(8) <= dbg_done_seen;
-    LEDR(9) <= dbg_error_seen or dbg_cmd_clear_seen;
+    LEDR(3) <= dbg_host_wr_seen;
+    LEDR(4) <= dbg_cmd_start_seen;
+    LEDR(5) <= accel_busy;
+    LEDR(6) <= status_load_active;
+    LEDR(7) <= status_compute_active;
+    LEDR(8) <= status_store_active;
+    LEDR(9) <= dbg_error_seen or dbg_done_seen;
 
     u_sigma_hex : entity work.sigma_hex_display
         port map (

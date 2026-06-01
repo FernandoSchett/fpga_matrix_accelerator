@@ -10,9 +10,7 @@ C = A x B
 
 A configuracao principal usa matrizes `N x N`, entradas inteiras `INT8`, acumulacao `INT32`, RAM interna M10K inferida, UART com FIFO e instrumentacao por LEDs/SignalTap. O objetivo e comparar configuracoes arquiteturais variando `TILE_SIZE`, `NUM_MACS` e outros parametros de experimento.
 
-Relatorio em desenvolvimento: [Overleaf](<coloque-o-link-aqui>).
-
-Relatorio tecnico: [PDF/Docs](<coloque-o-link-aqui>).
+Relatorio em tecnico: [Overleaf](https://www.overleaf.com/read/scfcftrdpjbt#d0d0b7).
 
 ## Primeiro Uso
 
@@ -32,7 +30,7 @@ git submodule update --init --recursive
 - `rtl/debug/`: wrapper SignalTap.
 - `rtl/top/matrix_accelerator_full_top.vhd`: top-level da placa.
 - `testes/`: testbenches e script para simulacao.
-- `py_matrix_host/`: submodulo Python para golden model, UART e validacao.
+- `py_matrix_host/`: submodulo para host Python que envia e recebe matrizes.
 - `parameter_optimization/`: experimentos, coleta, analise e graficos.
 
 ## Scripts

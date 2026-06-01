@@ -1,4 +1,4 @@
-# -----------------------------------------------------------------------------
+﻿# -----------------------------------------------------------------------------
 # Project: fpga_matrix_accelerator
 # Board  : Terasic DE0-CV
 # FPGA   : Cyclone V 5CEBA4F23C7 / physical board part 5CEBA4F23C7N
@@ -29,7 +29,6 @@ set_global_assignment -name POWER_BOARD_THERMAL_MODEL "NONE (CONSERVATIVE)"
 set_global_assignment -name VHDL_FILE rtl/common/matrix_tiled_pkg.vhd
 set_global_assignment -name VHDL_FILE rtl/common/matrix_accel_config_pkg.vhd
 set_global_assignment -name VHDL_FILE rtl/common/perf_counters.vhd
-set_global_assignment -name VHDL_FILE rtl/common/accelerator_status_leds.vhd
 set_global_assignment -name VHDL_FILE rtl/common/sigma_hex_display.vhd
 set_global_assignment -name VHDL_FILE rtl/memory/sdram_bus_if.vhd
 set_global_assignment -name VHDL_FILE rtl/compute/mac_unit.vhd

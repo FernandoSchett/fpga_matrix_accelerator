@@ -374,7 +374,6 @@ function New-ExperimentQsf {
         "rtl/common/matrix_tiled_pkg.vhd",
         "rtl/common/matrix_accel_config_pkg.vhd",
         "rtl/common/perf_counters.vhd",
-        "rtl/common/accelerator_status_leds.vhd",
         "rtl/common/sigma_hex_display.vhd",
         "rtl/compute/mac_unit.vhd",
         "rtl/compute/matrix_tiled_compute_core.vhd",

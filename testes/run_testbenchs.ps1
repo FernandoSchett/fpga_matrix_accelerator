@@ -190,7 +190,6 @@ function Get-RtlSources {
         "rtl/common/matrix_tiled_pkg.vhd",
         "rtl/common/matrix_accel_config_pkg.vhd",
         "rtl/common/perf_counters.vhd",
-        "rtl/common/accelerator_status_leds.vhd",
         "rtl/common/sigma_hex_display.vhd",
         "rtl/memory/sdram_bus_if.vhd",
         "rtl/compute/mac_unit.vhd",
@@ -299,7 +298,6 @@ $tests = @(
     "tb_command_interface",
     "tb_uart_byte_fifo",
     "tb_sigma_hex_display",
-    "tb_accelerator_status_leds",
     "tb_matrix_accelerator_full_top",
     "tb_matrix_accelerator_full_top_uart_protocol"
 )

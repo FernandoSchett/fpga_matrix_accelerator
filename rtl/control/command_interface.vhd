@@ -9,8 +9,7 @@ entity command_interface is
     generic (
         ADDR_WIDTH        : positive := DEFAULT_ADDR_WIDTH;
         DATA_WIDTH        : positive := DEFAULT_HOST_DATA_WIDTH;
-        COUNTER_WIDTH     : positive := 64;
-        HOST_READ_LATENCY : natural  := 3
+        COUNTER_WIDTH     : positive := 64
     );
     port (
         clk : in std_logic;
@@ -27,14 +26,14 @@ entity command_interface is
         accelerator_busy : in std_logic;
         accelerator_done : in std_logic;
 
-        host_wr_en      : out std_logic;
+        host_cmd_valid  : out std_logic;
+        host_cmd_write  : out std_logic;
+        host_cmd_ready  : in std_logic;
         host_matrix_sel : out std_logic_vector(1 downto 0);
         host_addr       : out unsigned(ADDR_WIDTH-1 downto 0);
         host_data_in    : out std_logic_vector(DATA_WIDTH-1 downto 0);
-
-        host_rd_en      : out std_logic;
-        host_rd_addr    : out unsigned(ADDR_WIDTH-1 downto 0);
         host_data_out   : in std_logic_vector(DATA_WIDTH-1 downto 0);
+        host_rd_valid   : in std_logic;
 
         start : out std_logic;
         clear : out std_logic;
@@ -89,15 +88,11 @@ architecture rtl of command_interface is
     signal tx_word_reg  : std_logic_vector(31 downto 0) := (others => '0');
     signal tx_index     : integer range 0 to 3 := 0;
 
-    signal read_wait_count : natural range 0 to HOST_READ_LATENCY := 0;
     signal counter_index   : integer range 0 to 5 := 0;
 
-    signal host_wr_en_reg      : std_logic := '0';
     signal host_matrix_sel_reg : std_logic_vector(1 downto 0) := MATRIX_ID_A;
     signal host_addr_reg       : unsigned(ADDR_WIDTH-1 downto 0) := (others => '0');
     signal host_data_in_reg    : std_logic_vector(DATA_WIDTH-1 downto 0) := (others => '0');
-    signal host_rd_en_reg      : std_logic := '0';
-    signal host_rd_addr_reg    : unsigned(ADDR_WIDTH-1 downto 0) := (others => '0');
     signal start_reg           : std_logic := '0';
     signal clear_reg           : std_logic := '0';
 
@@ -118,12 +113,11 @@ begin
     tx_start <= tx_start_reg;
     tx_byte  <= tx_byte_reg;
 
-    host_wr_en      <= host_wr_en_reg;
+    host_cmd_valid  <= '1' when state = ISSUE_LOAD or state = ISSUE_READ_C else '0';
+    host_cmd_write  <= '1' when state = ISSUE_LOAD else '0';
     host_matrix_sel <= host_matrix_sel_reg;
     host_addr       <= host_addr_reg;
     host_data_in    <= host_data_in_reg;
-    host_rd_en      <= host_rd_en_reg;
-    host_rd_addr    <= host_rd_addr_reg;
     start           <= start_reg;
     clear           <= clear_reg;
 
@@ -144,21 +138,15 @@ begin
             tx_byte_reg         <= (others => '0');
             tx_word_reg         <= (others => '0');
             tx_index            <= 0;
-            read_wait_count     <= 0;
             counter_index       <= 0;
-            host_wr_en_reg      <= '0';
             host_matrix_sel_reg <= MATRIX_ID_A;
             host_addr_reg       <= (others => '0');
             host_data_in_reg    <= (others => '0');
-            host_rd_en_reg      <= '0';
-            host_rd_addr_reg    <= (others => '0');
             start_reg           <= '0';
             clear_reg           <= '0';
 
         elsif rising_edge(clk) then
             tx_start_reg   <= '0';
-            host_wr_en_reg <= '0';
-            host_rd_en_reg <= '0';
             start_reg      <= '0';
             clear_reg      <= '0';
 
@@ -201,8 +189,8 @@ begin
                             byte_count <= 0;
 
                             if opcode_reg = CMD_READ_C then
-                                host_rd_addr_reg <= resize(unsigned(next_addr), ADDR_WIDTH);
-                                state            <= ISSUE_READ_C;
+                                host_addr_reg <= resize(unsigned(next_addr), ADDR_WIDTH);
+                                state         <= ISSUE_READ_C;
                             else
                                 data_shift <= (others => '0');
                                 state      <= RECV_DATA;
@@ -235,8 +223,9 @@ begin
                     end if;
 
                 when ISSUE_LOAD =>
-                    host_wr_en_reg <= '1';
-                    state          <= SEND_ACK;
+                    if host_cmd_ready = '1' then
+                        state <= SEND_ACK;
+                    end if;
 
                 when ISSUE_START =>
                     if accelerator_busy = '0' then
@@ -255,22 +244,15 @@ begin
                     end if;
 
                 when ISSUE_READ_C =>
-                    host_rd_en_reg <= '1';
-
-                    if HOST_READ_LATENCY = 0 then
+                    if host_cmd_ready = '1' then
                         state <= WAIT_READ_C;
-                    else
-                        read_wait_count <= HOST_READ_LATENCY;
-                        state           <= WAIT_READ_C;
                     end if;
 
                 when WAIT_READ_C =>
-                    if read_wait_count = 0 then
+                    if host_rd_valid = '1' then
                         tx_word_reg <= std_logic_vector(resize(unsigned(host_data_out), 32));
                         tx_index    <= 0;
                         state       <= SEND_WORD;
-                    else
-                        read_wait_count <= read_wait_count - 1;
                     end if;
 
                 when PREP_STATUS =>

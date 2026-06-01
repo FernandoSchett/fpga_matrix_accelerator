@@ -26,14 +26,15 @@ entity matrix_mult_sdram_tiled_core is
         clk : in std_logic;
         rst : in std_logic;
 
-        wr_en      : in std_logic;
-        matrix_sel : in std_logic_vector(1 downto 0);
-        wr_addr    : in unsigned(clog2(N*N)-1 downto 0);
-        data_in    : in signed(DATA_WIDTH-1 downto 0);
+        host_cmd_valid : in std_logic;
+        host_cmd_write : in std_logic;
+        host_cmd_ready : out std_logic;
+        matrix_sel     : in std_logic_vector(1 downto 0);
+        cmd_addr       : in unsigned(clog2(N*N)-1 downto 0);
+        data_in        : in signed(DATA_WIDTH-1 downto 0);
 
-        rd_en   : in std_logic;
-        rd_addr : in unsigned(clog2(N*N)-1 downto 0);
         data_out : out signed(ACC_WIDTH-1 downto 0);
+        rd_valid : out std_logic;
 
         start : in std_logic;
         busy  : out std_logic;
@@ -121,7 +122,9 @@ architecture rtl of matrix_mult_sdram_tiled_core is
     signal host_ready     : std_logic;
     signal host_rvalid    : std_logic;
     signal host_rdata     : std_logic_vector(SDRAM_DATA_W-1 downto 0);
+    signal host_accept_ready : std_logic;
     signal data_out_reg   : signed(ACC_WIDTH-1 downto 0) := (others => '0');
+    signal data_out_valid_reg : std_logic := '0';
 
     signal loader_rd_req   : std_logic;
     signal loader_rd_addr  : unsigned(SDRAM_ADDR_W-1 downto 0);
@@ -237,6 +240,9 @@ begin
     busy <= sched_busy;
     done <= sched_done;
     data_out <= data_out_reg;
+    rd_valid <= data_out_valid_reg;
+    host_accept_ready <= '1' when host_pending = '0' and sched_busy = '0' else '0';
+    host_cmd_ready <= host_accept_ready;
     mac_ops_issued <= resize(core_mac_ops_issued, mac_ops_issued'length);
 
     c_rd_row_mux <= writer_c_rd_row when writer_busy = '1' else pack_c_rd_row;
@@ -491,29 +497,33 @@ begin
             host_wdata_reg <= (others => '0');
             host_be_reg    <= (others => '0');
             data_out_reg   <= (others => '0');
+            data_out_valid_reg <= '0';
 
         elsif rising_edge(clk) then
+            data_out_valid_reg <= '0';
+
             if host_pending = '1' and host_ready = '1' then
                 host_pending <= '0';
             end if;
 
             if host_rvalid = '1' then
                 data_out_reg <= signed(host_rdata(ACC_WIDTH-1 downto 0));
+                data_out_valid_reg <= '1';
             end if;
 
-            if host_pending = '0' and sched_busy = '0' then
-                if wr_en = '1' then
+            if host_cmd_valid = '1' and host_accept_ready = '1' then
+                if host_cmd_write = '1' then
                     host_pending   <= '1';
                     host_write_reg <= '1';
-                    host_addr_reg  <= host_matrix_byte_addr(matrix_sel, wr_addr);
+                    host_addr_reg  <= host_matrix_byte_addr(matrix_sel, cmd_addr);
                     host_wdata_reg <= (others => '0');
                     host_wdata_reg(DATA_WIDTH-1 downto 0) <= std_logic_vector(data_in);
                     host_be_reg    <= (others => '0');
                     host_be_reg(0) <= '1';
-                elsif rd_en = '1' then
+                else
                     host_pending   <= '1';
                     host_write_reg <= '0';
-                    host_addr_reg  <= host_matrix_byte_addr(MATRIX_ID_C, rd_addr);
+                    host_addr_reg  <= host_matrix_byte_addr(MATRIX_ID_C, cmd_addr);
                     host_wdata_reg <= (others => '0');
                     host_be_reg    <= (others => '0');
                 end if;

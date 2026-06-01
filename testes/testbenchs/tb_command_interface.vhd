@@ -37,14 +37,16 @@ architecture sim of tb_command_interface is
     signal accelerator_busy : std_logic := '0';
     signal accelerator_done : std_logic := '0';
 
-    signal host_wr_en      : std_logic;
+    signal host_cmd_valid  : std_logic;
+    signal host_cmd_write  : std_logic;
+    signal host_cmd_ready  : std_logic := '0';
     signal host_matrix_sel : std_logic_vector(1 downto 0);
     signal host_addr       : unsigned(ADDR_WIDTH-1 downto 0);
     signal host_data_in    : std_logic_vector(DATA_WIDTH-1 downto 0);
-    signal host_rd_en      : std_logic;
-    signal host_rd_addr    : unsigned(ADDR_WIDTH-1 downto 0);
     signal host_data_out   : std_logic_vector(DATA_WIDTH-1 downto 0) := (others => '0');
+    signal host_rd_valid   : std_logic := '0';
     signal start           : std_logic;
+    signal clear           : std_logic;
 
     signal perf_total_cycles        : unsigned(COUNTER_WIDTH-1 downto 0) := (others => '0');
     signal perf_load_cycles         : unsigned(COUNTER_WIDTH-1 downto 0) := (others => '0');
@@ -103,7 +105,9 @@ architecture sim of tb_command_interface is
     end procedure;
 
     procedure wait_host_write(
-        signal wr_en_sig : in std_logic;
+        signal valid_sig : in std_logic;
+        signal write_sig : in std_logic;
+        signal ready_sig : out std_logic;
         signal sel_sig   : in std_logic_vector(1 downto 0);
         signal addr_sig  : in unsigned;
         signal data_sig  : in std_logic_vector;
@@ -113,28 +117,13 @@ architecture sim of tb_command_interface is
         constant label_text    : string
     ) is
     begin
-        wait for 1 ns;
-
-        if wr_en_sig = '1' then
-            assert sel_sig = expected_sel
-                report label_text & ": host_matrix_sel incorreto."
-                severity failure;
-
-            assert to_integer(addr_sig) = expected_addr
-                report label_text & ": host_addr incorreto."
-                severity failure;
-
-            assert data_sig = expected_data
-                report label_text & ": host_data_in incorreto."
-                severity failure;
-            return;
-        end if;
+        ready_sig <= '0';
 
         for cycle_idx in 0 to 100 loop
             wait until rising_edge(clk);
             wait for 1 ns;
 
-            if wr_en_sig = '1' then
+            if valid_sig = '1' and write_sig = '1' then
                 assert sel_sig = expected_sel
                     report label_text & ": host_matrix_sel incorreto."
                     severity failure;
@@ -146,45 +135,48 @@ architecture sim of tb_command_interface is
                 assert data_sig = expected_data
                     report label_text & ": host_data_in incorreto."
                     severity failure;
+
+                ready_sig <= '1';
+                wait until rising_edge(clk);
+                ready_sig <= '0';
                 return;
             end if;
         end loop;
 
         assert false
-            report label_text & ": timeout aguardando host_wr_en."
+            report label_text & ": timeout aguardando host_cmd_valid write."
             severity failure;
     end procedure;
 
     procedure wait_host_read(
-        signal rd_en_sig : in std_logic;
+        signal valid_sig : in std_logic;
+        signal write_sig : in std_logic;
+        signal ready_sig : out std_logic;
         signal addr_sig  : in unsigned;
         constant expected_addr : natural;
         constant label_text    : string
     ) is
     begin
-        wait for 1 ns;
-
-        if rd_en_sig = '1' then
-            assert to_integer(addr_sig) = expected_addr
-                report label_text & ": host_rd_addr incorreto."
-                severity failure;
-            return;
-        end if;
+        ready_sig <= '0';
 
         for cycle_idx in 0 to 100 loop
             wait until rising_edge(clk);
             wait for 1 ns;
 
-            if rd_en_sig = '1' then
+            if valid_sig = '1' and write_sig = '0' then
                 assert to_integer(addr_sig) = expected_addr
-                    report label_text & ": host_rd_addr incorreto."
+                    report label_text & ": host_addr incorreto."
                     severity failure;
+
+                ready_sig <= '1';
+                wait until rising_edge(clk);
+                ready_sig <= '0';
                 return;
             end if;
         end loop;
 
         assert false
-            report label_text & ": timeout aguardando host_rd_en."
+            report label_text & ": timeout aguardando host_cmd_valid read."
             severity failure;
     end procedure;
 
@@ -196,8 +188,7 @@ begin
         generic map (
             ADDR_WIDTH        => ADDR_WIDTH,
             DATA_WIDTH        => DATA_WIDTH,
-            COUNTER_WIDTH     => COUNTER_WIDTH,
-            HOST_READ_LATENCY => 2
+            COUNTER_WIDTH     => COUNTER_WIDTH
         )
         port map (
             clk                      => clk,
@@ -210,14 +201,16 @@ begin
             tx_byte                  => tx_byte,
             accelerator_busy         => accelerator_busy,
             accelerator_done         => accelerator_done,
-            host_wr_en               => host_wr_en,
+            host_cmd_valid           => host_cmd_valid,
+            host_cmd_write           => host_cmd_write,
+            host_cmd_ready           => host_cmd_ready,
             host_matrix_sel          => host_matrix_sel,
             host_addr                => host_addr,
             host_data_in             => host_data_in,
-            host_rd_en               => host_rd_en,
-            host_rd_addr             => host_rd_addr,
             host_data_out            => host_data_out,
+            host_rd_valid            => host_rd_valid,
             start                    => start,
+            clear                    => clear,
             perf_total_cycles        => perf_total_cycles,
             perf_load_cycles         => perf_load_cycles,
             perf_compute_cycles      => perf_compute_cycles,
@@ -236,14 +229,16 @@ begin
         send_byte(rx_valid, rx_byte, CMD_LOAD_A);
         send_word32(rx_valid, rx_byte, x"00000005");
         send_word32(rx_valid, rx_byte, x"0000002A");
-        wait_host_write(host_wr_en, host_matrix_sel, host_addr, host_data_in,
+        wait_host_write(host_cmd_valid, host_cmd_write, host_cmd_ready,
+                        host_matrix_sel, host_addr, host_data_in,
                         MATRIX_ID_A, 5, x"0000002A", "LOAD_A");
         expect_tx_byte(tx_start, tx_byte, RESP_ACK, "LOAD_A ACK");
 
         send_byte(rx_valid, rx_byte, CMD_LOAD_B);
         send_word32(rx_valid, rx_byte, x"00000006");
         send_word32(rx_valid, rx_byte, x"FFFFFFF9");
-        wait_host_write(host_wr_en, host_matrix_sel, host_addr, host_data_in,
+        wait_host_write(host_cmd_valid, host_cmd_write, host_cmd_ready,
+                        host_matrix_sel, host_addr, host_data_in,
                         MATRIX_ID_B, 6, x"FFFFFFF9", "LOAD_B");
         expect_tx_byte(tx_start, tx_byte, RESP_ACK, "LOAD_B ACK");
 
@@ -279,7 +274,12 @@ begin
         host_data_out <= x"00000099";
         send_byte(rx_valid, rx_byte, CMD_READ_C);
         send_word32(rx_valid, rx_byte, x"00000007");
-        wait_host_read(host_rd_en, host_rd_addr, 7, "READ_C");
+        wait_host_read(host_cmd_valid, host_cmd_write, host_cmd_ready,
+                       host_addr, 7, "READ_C");
+        wait until rising_edge(clk);
+        host_rd_valid <= '1';
+        wait until rising_edge(clk);
+        host_rd_valid <= '0';
         expect_tx_byte(tx_start, tx_byte, x"00", "READ_C byte 0");
         expect_tx_byte(tx_start, tx_byte, x"00", "READ_C byte 1");
         expect_tx_byte(tx_start, tx_byte, x"00", "READ_C byte 2");

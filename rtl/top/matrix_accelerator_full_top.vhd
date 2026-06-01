@@ -107,13 +107,14 @@ architecture rtl of matrix_accelerator_full_top is
     signal accel_done  : std_logic;
     signal done_seen   : std_logic := '0';
 
-    signal host_wr_en      : std_logic;
+    signal host_cmd_valid  : std_logic;
+    signal host_cmd_write  : std_logic;
+    signal host_cmd_ready  : std_logic;
     signal host_matrix_sel : std_logic_vector(1 downto 0);
     signal host_addr       : unsigned(ADDR_WIDTH-1 downto 0);
     signal host_data_in    : std_logic_vector(HOST_DATA_WIDTH-1 downto 0);
-    signal host_rd_en      : std_logic;
-    signal host_rd_addr    : unsigned(ADDR_WIDTH-1 downto 0);
     signal host_data_out   : std_logic_vector(HOST_DATA_WIDTH-1 downto 0);
+    signal host_rd_valid   : std_logic;
 
     signal accel_data_out   : signed(ACC_WIDTH-1 downto 0);
 
@@ -273,8 +274,7 @@ begin
         generic map (
             ADDR_WIDTH        => ADDR_WIDTH,
             DATA_WIDTH        => HOST_DATA_WIDTH,
-            COUNTER_WIDTH     => 64,
-            HOST_READ_LATENCY => 6
+            COUNTER_WIDTH     => 64
         )
         port map (
             clk                      => clk,
@@ -287,13 +287,14 @@ begin
             tx_byte                  => cmd_tx_byte,
             accelerator_busy         => accel_busy,
             accelerator_done         => done_seen,
-            host_wr_en               => host_wr_en,
+            host_cmd_valid           => host_cmd_valid,
+            host_cmd_write           => host_cmd_write,
+            host_cmd_ready           => host_cmd_ready,
             host_matrix_sel          => host_matrix_sel,
             host_addr                => host_addr,
             host_data_in             => host_data_in,
-            host_rd_en               => host_rd_en,
-            host_rd_addr             => host_rd_addr,
             host_data_out            => host_data_out,
+            host_rd_valid            => host_rd_valid,
             start                    => cmd_start,
             clear                    => cmd_clear,
             perf_total_cycles        => perf_total_cycles,
@@ -320,13 +321,14 @@ begin
         port map (
             clk         => clk,
             rst         => accel_rst,
-            wr_en       => host_wr_en,
-            matrix_sel  => host_matrix_sel,
-            wr_addr     => host_addr,
-            data_in     => signed(host_data_in(DATA_WIDTH-1 downto 0)),
-            rd_en       => host_rd_en,
-            rd_addr     => host_rd_addr,
-            data_out    => accel_data_out,
+            host_cmd_valid => host_cmd_valid,
+            host_cmd_write => host_cmd_write,
+            host_cmd_ready => host_cmd_ready,
+            matrix_sel     => host_matrix_sel,
+            cmd_addr       => host_addr,
+            data_in        => signed(host_data_in(DATA_WIDTH-1 downto 0)),
+            data_out       => accel_data_out,
+            rd_valid       => host_rd_valid,
             start       => accel_start,
             busy        => accel_busy,
             done        => accel_done,
@@ -415,7 +417,7 @@ begin
                 dbg_uart_tx_low_seen <= '1';
             end if;
 
-            if host_wr_en = '1' then
+            if host_cmd_valid = '1' and host_cmd_write = '1' and host_cmd_ready = '1' then
                 dbg_host_wr_seen <= '1';
             end if;
 
@@ -475,8 +477,8 @@ begin
     debug_probe_data(11) <= tx_fifo_full;
     debug_probe_data(12) <= tx_fifo_almost_full;
     debug_probe_data(13) <= tx_fifo_overflow;
-    debug_probe_data(14) <= host_wr_en;
-    debug_probe_data(15) <= host_rd_en;
+    debug_probe_data(14) <= host_cmd_valid;
+    debug_probe_data(15) <= host_cmd_write;
     debug_probe_data(16) <= cmd_start;
     debug_probe_data(17) <= cmd_clear;
     debug_probe_data(31 downto 18) <= std_logic_vector(resize(host_addr, 14));
@@ -492,8 +494,8 @@ begin
     debug_trigger_data(2) <= accel_done;
     debug_trigger_data(3) <= uart_rx_valid;
     debug_trigger_data(4) <= cmd_rx_valid;
-    debug_trigger_data(5) <= host_wr_en;
-    debug_trigger_data(6) <= host_rd_en;
+    debug_trigger_data(5) <= host_cmd_valid and host_cmd_write and host_cmd_ready;
+    debug_trigger_data(6) <= host_cmd_valid and (not host_cmd_write) and host_cmd_ready;
     debug_trigger_data(7) <= rx_fifo_overflow or tx_fifo_overflow or cmd_clear;
 
     gen_signaltap : if ENABLE_SIGNALTAP generate

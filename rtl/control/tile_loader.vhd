@@ -5,6 +5,7 @@ use ieee.numeric_std.all;
 library work;
 use work.matrix_tiled_pkg.all;
 use work.sdram_bus_if_pkg.all;
+use work.matrix_memory_map_pkg.all;
 
 entity tile_loader is
     generic (
@@ -62,25 +63,8 @@ architecture rtl of tile_loader is
 
     type state_t is (IDLE, REQ_A, WAIT_A, REQ_B, WAIT_B, INIT_C_ZERO, REQ_C, WAIT_C, DONE_STATE);
 
-    function select_base(configured_base : natural; default_base : natural) return natural is
-    begin
-        if configured_base = 0 then
-            return default_base;
-        end if;
-        return configured_base;
-    end function;
-
     constant LOCAL_W       : positive := clog2(TILE_SIZE);
     constant TILE_ELEMS    : positive := TILE_SIZE * TILE_SIZE;
-    constant DATA_BYTES    : positive := (DATA_WIDTH + 7) / 8;
-    constant ACC_BYTES     : positive := (ACC_WIDTH + 7) / 8;
-    constant MATRIX_ELEMS  : natural := N * N;
-    constant A_BYTES       : natural := MATRIX_ELEMS * DATA_BYTES;
-    constant B_BYTES       : natural := MATRIX_ELEMS * DATA_BYTES;
-    constant DEFAULT_BASE_B : natural := BASE_A_BYTES + A_BYTES;
-    constant SELECT_BASE_B  : natural := select_base(BASE_B_BYTES, DEFAULT_BASE_B);
-    constant DEFAULT_BASE_C : natural := SELECT_BASE_B + B_BYTES;
-    constant SELECT_BASE_C  : natural := select_base(BASE_C_BYTES, DEFAULT_BASE_C);
 
     signal state    : state_t := IDLE;
     signal elem_idx : natural range 0 to TILE_ELEMS-1 := 0;
@@ -94,13 +78,6 @@ architecture rtl of tile_loader is
     function local_col(idx : natural) return natural is
     begin
         return idx mod TILE_SIZE;
-    end function;
-
-    function byte_addr(base_value : natural; row_value : natural; col_value : natural; elem_bytes : positive) return unsigned is
-        variable linear_index : natural;
-    begin
-        linear_index := row_value * N + col_value;
-        return to_unsigned(base_value + (linear_index * elem_bytes), SDRAM_ADDR_W);
     end function;
 
 begin
@@ -150,10 +127,16 @@ begin
                 when REQ_A =>
                     busy        <= '1';
                     mem_rd_req  <= '1';
-                    mem_rd_addr <= byte_addr(BASE_A_BYTES,
-                                             tile_i * TILE_SIZE + lr,
-                                             (tile_k + panel_idx) * TILE_SIZE + lc,
-                                             DATA_BYTES);
+                    mem_rd_addr <= matrix_byte_addr(MATRIX_SEL_A,
+                                                    tile_i * TILE_SIZE + lr,
+                                                    (tile_k + panel_idx) * TILE_SIZE + lc,
+                                                    N,
+                                                    DATA_WIDTH,
+                                                    ACC_WIDTH,
+                                                    BASE_A_BYTES,
+                                                    BASE_B_BYTES,
+                                                    BASE_C_BYTES,
+                                                    SDRAM_ADDR_W);
                     if mem_rd_ready = '1' then
                         state <= WAIT_A;
                     end if;
@@ -172,10 +155,16 @@ begin
                 when REQ_B =>
                     busy        <= '1';
                     mem_rd_req  <= '1';
-                    mem_rd_addr <= byte_addr(SELECT_BASE_B,
-                                             (tile_k + panel_idx) * TILE_SIZE + lr,
-                                             tile_j * TILE_SIZE + lc,
-                                             DATA_BYTES);
+                    mem_rd_addr <= matrix_byte_addr(MATRIX_SEL_B,
+                                                    (tile_k + panel_idx) * TILE_SIZE + lr,
+                                                    tile_j * TILE_SIZE + lc,
+                                                    N,
+                                                    DATA_WIDTH,
+                                                    ACC_WIDTH,
+                                                    BASE_A_BYTES,
+                                                    BASE_B_BYTES,
+                                                    BASE_C_BYTES,
+                                                    SDRAM_ADDR_W);
                     if mem_rd_ready = '1' then
                         state <= WAIT_B;
                     end if;
@@ -227,10 +216,16 @@ begin
                 when REQ_C =>
                     busy        <= '1';
                     mem_rd_req  <= '1';
-                    mem_rd_addr <= byte_addr(SELECT_BASE_C,
-                                             tile_i * TILE_SIZE + lr,
-                                             tile_j * TILE_SIZE + lc,
-                                             ACC_BYTES);
+                    mem_rd_addr <= matrix_byte_addr(MATRIX_SEL_C,
+                                                    tile_i * TILE_SIZE + lr,
+                                                    tile_j * TILE_SIZE + lc,
+                                                    N,
+                                                    DATA_WIDTH,
+                                                    ACC_WIDTH,
+                                                    BASE_A_BYTES,
+                                                    BASE_B_BYTES,
+                                                    BASE_C_BYTES,
+                                                    SDRAM_ADDR_W);
                     if mem_rd_ready = '1' then
                         state <= WAIT_C;
                     end if;

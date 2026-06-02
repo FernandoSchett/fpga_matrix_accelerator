@@ -52,7 +52,7 @@ rtl/memory/
   sdram_bus_if.vhd              constantes da interface SDRAM
   sdram_ip_core.vhd             wrapper Avalon-like para IP SDRAM 16-bit
   sdram_controller_wrapper.vhd  modelo sim + adaptador fisico para IP
-  matrix_memory_map.vhd         mapa byte das matrizes
+  matrix_memory_map.vhd         pacote/fonte unica do mapa byte das matrizes
   tile_buffer_m10k.vhd          buffer local por tile
 
 rtl/ip/
@@ -155,7 +155,7 @@ DONE
 - Host escreve `A`/`B` direto na SDRAM via `memory_manager`.
 - Host le `C` final da SDRAM via comando aceito por `host_cmd_ready` e retorno `host_rd_valid`.
 - `sdram_controller_wrapper` retorna leitura real no modelo de sim e usa IP SDRAM externo no hardware.
-- Enderecamento e byte-addressed: `A`/`B` usam `int8`; `C` usa `int32`.
+- Enderecamento e byte-addressed: `A`/`B` usam `int8`; `C` usa `int32`; `matrix_memory_map_pkg` centraliza bases e calculo de endereco.
 - Escrita `int8` em barramento 32-bit usa byte address + DQM no IP SDRAM 16-bit fisico.
 - `C` inicial zera no primeiro `k` quando `ACCUMULATE_C=false`.
 - `tile_buffer_m10k` single-port nao alimenta MACs diretamente; o wrapper empacota o tile antes do compute, evitando conflito de portas.

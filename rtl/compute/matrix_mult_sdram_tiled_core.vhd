@@ -5,6 +5,7 @@ use ieee.numeric_std.all;
 library work;
 use work.matrix_accel_config_pkg.all;
 use work.matrix_tiled_pkg.all;
+use work.matrix_memory_map_pkg.all;
 
 entity matrix_mult_sdram_tiled_core is
     generic (
@@ -72,28 +73,15 @@ architecture rtl of matrix_mult_sdram_tiled_core is
         return right_value;
     end function;
 
-    function select_base(configured_base : natural; default_base : natural) return natural is
-    begin
-        if configured_base = 0 then
-            return default_base;
-        end if;
-        return configured_base;
-    end function;
-
     constant HOST_ADDR_W    : positive := clog2(N * N);
     constant LOCAL_W        : positive := clog2(TILE_SIZE);
     constant TILE_ELEMS     : positive := TILE_SIZE * TILE_SIZE;
     constant PANEL_TILES    : positive := min_positive(MEMORY_BANKS_A, MEMORY_BANKS_B);
     constant SDRAM_BYTES    : positive := SDRAM_DATA_W / 8;
-    constant DATA_BYTES     : positive := (DATA_WIDTH + 7) / 8;
-    constant ACC_BYTES      : positive := (ACC_WIDTH + 7) / 8;
+    constant ACC_BYTES      : positive := matrix_elem_bytes(ACC_WIDTH);
     constant MATRIX_ELEMS   : natural := N * N;
-    constant A_BYTES        : natural := MATRIX_ELEMS * DATA_BYTES;
-    constant B_BYTES        : natural := MATRIX_ELEMS * DATA_BYTES;
-    constant DEFAULT_BASE_B : natural := BASE_A_BYTES + A_BYTES;
-    constant SELECT_BASE_B  : natural := select_base(BASE_B_BYTES, DEFAULT_BASE_B);
-    constant DEFAULT_BASE_C : natural := SELECT_BASE_B + B_BYTES;
-    constant SELECT_BASE_C  : natural := select_base(BASE_C_BYTES, DEFAULT_BASE_C);
+    constant SELECT_BASE_C  : natural := matrix_base_c(N, DATA_WIDTH, ACC_WIDTH,
+                                                        BASE_A_BYTES, BASE_B_BYTES, BASE_C_BYTES);
     constant TOTAL_BYTES    : natural := SELECT_BASE_C + (MATRIX_ELEMS * ACC_BYTES);
     constant EMULATED_WORDS : positive := ceil_div(TOTAL_BYTES, SDRAM_BYTES);
 
@@ -229,25 +217,6 @@ architecture rtl of matrix_mult_sdram_tiled_core is
     function local_col(idx : natural) return natural is
     begin
         return idx mod TILE_SIZE;
-    end function;
-
-    function host_matrix_byte_addr(
-        constant sel  : std_logic_vector(1 downto 0);
-        constant addr : unsigned
-    ) return unsigned is
-        variable linear_index : natural;
-        variable byte_addr    : natural;
-    begin
-        linear_index := to_integer(addr);
-        byte_addr := BASE_A_BYTES + (linear_index * DATA_BYTES);
-
-        if sel = MATRIX_ID_B then
-            byte_addr := SELECT_BASE_B + (linear_index * DATA_BYTES);
-        elsif sel = MATRIX_ID_C then
-            byte_addr := SELECT_BASE_C + (linear_index * ACC_BYTES);
-        end if;
-
-        return to_unsigned(byte_addr, SDRAM_ADDR_W);
     end function;
 
 begin
@@ -556,7 +525,15 @@ begin
                 if host_cmd_write = '1' then
                     host_pending   <= '1';
                     host_write_reg <= '1';
-                    host_addr_reg  <= host_matrix_byte_addr(matrix_sel, cmd_addr);
+                    host_addr_reg  <= matrix_linear_byte_addr(matrix_sel,
+                                                              to_integer(cmd_addr),
+                                                              N,
+                                                              DATA_WIDTH,
+                                                              ACC_WIDTH,
+                                                              BASE_A_BYTES,
+                                                              BASE_B_BYTES,
+                                                              BASE_C_BYTES,
+                                                              SDRAM_ADDR_W);
                     host_wdata_reg <= (others => '0');
                     host_wdata_reg(DATA_WIDTH-1 downto 0) <= std_logic_vector(data_in);
                     host_be_reg    <= (others => '0');
@@ -564,7 +541,15 @@ begin
                 else
                     host_pending   <= '1';
                     host_write_reg <= '0';
-                    host_addr_reg  <= host_matrix_byte_addr(MATRIX_ID_C, cmd_addr);
+                    host_addr_reg  <= matrix_linear_byte_addr(MATRIX_ID_C,
+                                                              to_integer(cmd_addr),
+                                                              N,
+                                                              DATA_WIDTH,
+                                                              ACC_WIDTH,
+                                                              BASE_A_BYTES,
+                                                              BASE_B_BYTES,
+                                                              BASE_C_BYTES,
+                                                              SDRAM_ADDR_W);
                     host_wdata_reg <= (others => '0');
                     host_be_reg    <= (others => '0');
                 end if;

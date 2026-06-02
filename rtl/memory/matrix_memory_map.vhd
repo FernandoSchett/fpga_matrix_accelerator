@@ -3,8 +3,172 @@ use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
 library work;
+use work.sdram_bus_if_pkg.all;
+
+package matrix_memory_map_pkg is
+
+    function matrix_elem_bytes(width_bits : positive) return positive;
+
+    function selected_matrix_base(
+        configured_base : natural;
+        default_base    : natural
+    ) return natural;
+
+    function matrix_base_b(
+        n            : positive;
+        data_width   : positive;
+        base_a_bytes : natural;
+        base_b_bytes : natural
+    ) return natural;
+
+    function matrix_base_c(
+        n            : positive;
+        data_width   : positive;
+        acc_width    : positive;
+        base_a_bytes : natural;
+        base_b_bytes : natural;
+        base_c_bytes : natural
+    ) return natural;
+
+    function matrix_linear_byte_addr(
+        matrix_sel   : std_logic_vector(1 downto 0);
+        linear_index : natural;
+        n            : positive;
+        data_width   : positive;
+        acc_width    : positive;
+        base_a_bytes : natural;
+        base_b_bytes : natural;
+        base_c_bytes : natural;
+        addr_width   : positive
+    ) return unsigned;
+
+    function matrix_byte_addr(
+        matrix_sel   : std_logic_vector(1 downto 0);
+        row_idx      : natural;
+        col_idx      : natural;
+        n            : positive;
+        data_width   : positive;
+        acc_width    : positive;
+        base_a_bytes : natural;
+        base_b_bytes : natural;
+        base_c_bytes : natural;
+        addr_width   : positive
+    ) return unsigned;
+
+end package matrix_memory_map_pkg;
+
+library ieee;
+use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
+
+library work;
+use work.sdram_bus_if_pkg.all;
+
+package body matrix_memory_map_pkg is
+
+    function matrix_elem_bytes(width_bits : positive) return positive is
+    begin
+        return (width_bits + 7) / 8;
+    end function;
+
+    function selected_matrix_base(
+        configured_base : natural;
+        default_base    : natural
+    ) return natural is
+    begin
+        if configured_base = 0 then
+            return default_base;
+        end if;
+        return configured_base;
+    end function;
+
+    function matrix_base_b(
+        n            : positive;
+        data_width   : positive;
+        base_a_bytes : natural;
+        base_b_bytes : natural
+    ) return natural is
+        variable matrix_elems : natural;
+        variable a_bytes      : natural;
+    begin
+        matrix_elems := n * n;
+        a_bytes := matrix_elems * matrix_elem_bytes(data_width);
+        return selected_matrix_base(base_b_bytes, base_a_bytes + a_bytes);
+    end function;
+
+    function matrix_base_c(
+        n            : positive;
+        data_width   : positive;
+        acc_width    : positive;
+        base_a_bytes : natural;
+        base_b_bytes : natural;
+        base_c_bytes : natural
+    ) return natural is
+        variable matrix_elems : natural;
+        variable b_base       : natural;
+        variable b_bytes      : natural;
+    begin
+        matrix_elems := n * n;
+        b_base := matrix_base_b(n, data_width, base_a_bytes, base_b_bytes);
+        b_bytes := matrix_elems * matrix_elem_bytes(data_width);
+        return selected_matrix_base(base_c_bytes, b_base + b_bytes);
+    end function;
+
+    function matrix_linear_byte_addr(
+        matrix_sel   : std_logic_vector(1 downto 0);
+        linear_index : natural;
+        n            : positive;
+        data_width   : positive;
+        acc_width    : positive;
+        base_a_bytes : natural;
+        base_b_bytes : natural;
+        base_c_bytes : natural;
+        addr_width   : positive
+    ) return unsigned is
+        variable byte_addr : natural;
+    begin
+        byte_addr := base_a_bytes + (linear_index * matrix_elem_bytes(data_width));
+
+        if matrix_sel = MATRIX_SEL_B then
+            byte_addr := matrix_base_b(n, data_width, base_a_bytes, base_b_bytes) +
+                         (linear_index * matrix_elem_bytes(data_width));
+        elsif matrix_sel = MATRIX_SEL_C then
+            byte_addr := matrix_base_c(n, data_width, acc_width, base_a_bytes, base_b_bytes, base_c_bytes) +
+                         (linear_index * matrix_elem_bytes(acc_width));
+        end if;
+
+        return to_unsigned(byte_addr, addr_width);
+    end function;
+
+    function matrix_byte_addr(
+        matrix_sel   : std_logic_vector(1 downto 0);
+        row_idx      : natural;
+        col_idx      : natural;
+        n            : positive;
+        data_width   : positive;
+        acc_width    : positive;
+        base_a_bytes : natural;
+        base_b_bytes : natural;
+        base_c_bytes : natural;
+        addr_width   : positive
+    ) return unsigned is
+        variable linear_index : natural;
+    begin
+        linear_index := (row_idx * n) + col_idx;
+        return matrix_linear_byte_addr(matrix_sel, linear_index, n, data_width, acc_width,
+                                       base_a_bytes, base_b_bytes, base_c_bytes, addr_width);
+    end function;
+
+end package body matrix_memory_map_pkg;
+
+library ieee;
+use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
+
+library work;
 use work.matrix_tiled_pkg.all;
 use work.sdram_bus_if_pkg.all;
+use work.matrix_memory_map_pkg.all;
 
 entity matrix_memory_map is
     generic (
@@ -26,51 +190,25 @@ entity matrix_memory_map is
 end entity matrix_memory_map;
 
 architecture rtl of matrix_memory_map is
-
-    function select_base(configured_base : natural; default_base : natural) return natural is
-    begin
-        if configured_base = 0 then
-            return default_base;
-        end if;
-        return configured_base;
-    end function;
-
-    constant DATA_BYTES       : positive := (DATA_WIDTH + 7) / 8;
-    constant ACC_BYTES        : positive := (ACC_WIDTH + 7) / 8;
-    constant MATRIX_ELEMS     : natural := N * N;
-    constant A_BYTES          : natural := MATRIX_ELEMS * DATA_BYTES;
-    constant B_BYTES          : natural := MATRIX_ELEMS * DATA_BYTES;
-    constant DEFAULT_BASE_B   : natural := BASE_A_BYTES + A_BYTES;
-    constant SELECTED_BASE_B  : natural := select_base(BASE_B_BYTES, DEFAULT_BASE_B);
-    constant DEFAULT_BASE_C   : natural := SELECTED_BASE_B + B_BYTES;
-    constant SELECTED_BASE_C  : natural := select_base(BASE_C_BYTES, DEFAULT_BASE_C);
-
 begin
 
     process(matrix_sel, row_idx, col_idx)
-        variable linear_index : natural;
-        variable addr_value   : natural;
     begin
-        linear_index := to_integer(row_idx) * N + to_integer(col_idx);
-        addr_value   := BASE_A_BYTES;
-        valid        <= '1';
+        valid <= '1';
+        if matrix_sel /= MATRIX_SEL_A and matrix_sel /= MATRIX_SEL_B and matrix_sel /= MATRIX_SEL_C then
+            valid <= '0';
+        end if;
 
-        case matrix_sel is
-            when MATRIX_SEL_A =>
-                addr_value := BASE_A_BYTES + (linear_index * DATA_BYTES);
-
-            when MATRIX_SEL_B =>
-                addr_value := SELECTED_BASE_B + (linear_index * DATA_BYTES);
-
-            when MATRIX_SEL_C =>
-                addr_value := SELECTED_BASE_C + (linear_index * ACC_BYTES);
-
-            when others =>
-                addr_value := 0;
-                valid      <= '0';
-        end case;
-
-        byte_addr <= to_unsigned(addr_value, ADDR_WIDTH);
+        byte_addr <= matrix_byte_addr(matrix_sel,
+                                      to_integer(row_idx),
+                                      to_integer(col_idx),
+                                      N,
+                                      DATA_WIDTH,
+                                      ACC_WIDTH,
+                                      BASE_A_BYTES,
+                                      BASE_B_BYTES,
+                                      BASE_C_BYTES,
+                                      ADDR_WIDTH);
     end process;
 
 end architecture rtl;

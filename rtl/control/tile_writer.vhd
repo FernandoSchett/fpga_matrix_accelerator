@@ -4,6 +4,8 @@ use ieee.numeric_std.all;
 
 library work;
 use work.matrix_tiled_pkg.all;
+use work.sdram_bus_if_pkg.all;
+use work.matrix_memory_map_pkg.all;
 
 entity tile_writer is
     generic (
@@ -43,25 +45,8 @@ architecture rtl of tile_writer is
 
     type state_t is (IDLE, SETUP_READ, WAIT_READ, ISSUE_WRITE, DONE_STATE);
 
-    function select_base(configured_base : natural; default_base : natural) return natural is
-    begin
-        if configured_base = 0 then
-            return default_base;
-        end if;
-        return configured_base;
-    end function;
-
     constant LOCAL_W        : positive := clog2(TILE_SIZE);
     constant TILE_ELEMS     : positive := TILE_SIZE * TILE_SIZE;
-    constant DATA_BYTES     : positive := (DATA_WIDTH + 7) / 8;
-    constant ACC_BYTES      : positive := (ACC_WIDTH + 7) / 8;
-    constant MATRIX_ELEMS   : natural := N * N;
-    constant A_BYTES        : natural := MATRIX_ELEMS * DATA_BYTES;
-    constant B_BYTES        : natural := MATRIX_ELEMS * DATA_BYTES;
-    constant DEFAULT_BASE_B : natural := BASE_A_BYTES + A_BYTES;
-    constant SELECT_BASE_B  : natural := select_base(BASE_B_BYTES, DEFAULT_BASE_B);
-    constant DEFAULT_BASE_C : natural := SELECT_BASE_B + B_BYTES;
-    constant SELECT_BASE_C  : natural := select_base(BASE_C_BYTES, DEFAULT_BASE_C);
 
     signal state    : state_t := IDLE;
     signal elem_idx : natural range 0 to TILE_ELEMS-1 := 0;
@@ -74,13 +59,6 @@ architecture rtl of tile_writer is
     function local_col(idx : natural) return natural is
     begin
         return idx mod TILE_SIZE;
-    end function;
-
-    function c_byte_addr(row_value : natural; col_value : natural) return unsigned is
-        variable linear_index : natural;
-    begin
-        linear_index := row_value * N + col_value;
-        return to_unsigned(SELECT_BASE_C + (linear_index * ACC_BYTES), SDRAM_ADDR_W);
     end function;
 
 begin
@@ -134,8 +112,16 @@ begin
                 when ISSUE_WRITE =>
                     busy        <= '1';
                     mem_wr_req  <= '1';
-                    mem_wr_addr <= c_byte_addr(tile_i * TILE_SIZE + lr,
-                                               tile_j * TILE_SIZE + lc);
+                    mem_wr_addr <= matrix_byte_addr(MATRIX_SEL_C,
+                                                    tile_i * TILE_SIZE + lr,
+                                                    tile_j * TILE_SIZE + lc,
+                                                    N,
+                                                    DATA_WIDTH,
+                                                    ACC_WIDTH,
+                                                    BASE_A_BYTES,
+                                                    BASE_B_BYTES,
+                                                    BASE_C_BYTES,
+                                                    SDRAM_ADDR_W);
                     mem_wr_data <= std_logic_vector(resize(c_rd_data, SDRAM_DATA_W));
                     mem_wr_be   <= (others => '1');
                     if mem_wr_ready = '1' then

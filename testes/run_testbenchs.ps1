@@ -25,6 +25,11 @@ $PassMarker = "SIM_RESULT: PASS"
 
 Set-Location $ProjectDir
 
+$HandshakeCheck = Join-Path $TestsDir "check_sdram_handshake.ps1"
+if (Test-Path -LiteralPath $HandshakeCheck) {
+    & $HandshakeCheck
+}
+
 function Get-ProjectRelativePath {
     param([string]$Path)
 

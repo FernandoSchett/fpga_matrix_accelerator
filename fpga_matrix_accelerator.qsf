@@ -315,8 +315,8 @@ set_parameter -name DATAFLOW "output_stationary"
 set_parameter -name ENABLE_SIGNALTAP false
 set_parameter -name MAC_PIPELINE_STAGES 0
 set_parameter -name MEM_TYPE "external_sdram"
-set_parameter -name MEMORY_BANKS_A 2
-set_parameter -name MEMORY_BANKS_B 2
+set_parameter -name MEMORY_BANKS_A 1
+set_parameter -name MEMORY_BANKS_B 1
 set_parameter -name MEMORY_BURST_LEN 1
 set_parameter -name N 128
 set_parameter -name NUM_MACS 4

@@ -24,7 +24,8 @@ param(
 
     [switch]$Clean,
     [switch]$UpdatePythonEnv,
-    [switch]$Program
+    [switch]$Program,
+    [switch]$ProgramOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -35,6 +36,11 @@ $RevisionName = "fpga_matrix_accelerator"
 $QsfPath = Join-Path $ProjectDir "$ProjectName.qsf"
 
 Set-Location $ProjectDir
+
+$HandshakeCheck = Join-Path $ProjectDir "testes\check_sdram_handshake.ps1"
+if ((-not $ProgramOnly) -and (Test-Path -LiteralPath $HandshakeCheck)) {
+    & $HandshakeCheck
+}
 
 function Assert-PositiveInt {
     param(
@@ -210,6 +216,31 @@ MATRIX_OUTPUT_DIR=matrix
     Write-Host "Atualizado .env do Python: $EnvPath"
 }
 
+$sofPath = Join-Path $ProjectDir "output_files\$ProjectName.sof"
+
+if ($ProgramOnly) {
+    Write-Host "Modo ProgramOnly: pulando configuracao de generics, .env, limpeza e compilacao."
+
+    if (-not (Test-Path -LiteralPath $sofPath)) {
+        throw "Nao posso programar a FPGA: SOF nao encontrado em $sofPath"
+    }
+
+    $quartusPgm = Find-QuartusTool "quartus_pgm"
+
+    Invoke-Step -Command @(
+        $quartusPgm,
+        "-m",
+        "JTAG",
+        "-o",
+        "p;$sofPath"
+    )
+
+    Write-Host ""
+    Write-Host "FPGA programada com SOF existente:"
+    Write-Host "  $sofPath"
+    exit 0
+}
+
 Assert-PositiveInt -Name "N" -Value $N
 Assert-PositiveInt -Name "TileSize" -Value $TileSize
 Assert-PositiveInt -Name "NumMacs" -Value $NumMacs
@@ -289,8 +320,6 @@ Invoke-Step -Command @(
     "-c",
     $RevisionName
 )
-
-$sofPath = Join-Path $ProjectDir "output_files\$ProjectName.sof"
 
 if (Test-Path -LiteralPath $sofPath) {
     Write-Host ""

@@ -295,10 +295,10 @@ begin
         end function;
 
     begin
-        cmd_ready <= '1' when state = IDLE else '0';
+        cmd_ready <= '1' when state = IDLE and ip_waitrequest = '0' else '0';
         rd_valid  <= rd_valid_reg;
         rd_data   <= rd_data_reg;
-        busy      <= '1' when state /= IDLE else '0';
+        busy      <= '1' when state /= IDLE or ip_waitrequest = '1' else '0';
 
         dram_clk  <= clk;
         dram_ldqm <= ip_dqm(0);
@@ -355,7 +355,7 @@ begin
 
                 case state is
                     when IDLE =>
-                        if cmd_valid = '1' then
+                        if cmd_valid = '1' and ip_waitrequest = '0' then
                             cmd_write_reg <= cmd_write;
                             cmd_addr_reg  <= cmd_addr;
                             cmd_wdata_reg <= cmd_wdata;

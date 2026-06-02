@@ -135,3 +135,17 @@ Parametros conectados ao RTL atual:
 - `rtl/SDRAM_ARCHITECTURE.md`: plano da arquitetura SDRAM + M10K.
 - `rtl/memory/sdram_controller_wrapper.vhd`: stub para futuro IP SDRAM do Quartus/Platform Designer.
 - `rtl/control/memory_manager.vhd`: arbitra UART/host, loader e writer no barramento SDRAM.
+
+
+PS C:\Users\Ferna\Documents\fpga_matrix_accelerator> .\synth_fpga.ps1 `
+>>   -N 128 `
+>>   -TileSize 4 `
+>>   -NumMacs 4 `
+>>   -DataWidth 8 `
+>>   -AccWidth 32 `
+>>   -ClksPerBit 50 `
+>>   -Clean `
+>>   -UpdatePythonEnv `
+>>   -Program
+
+.\synth_fpga_programonly.ps1 -ProgramOnly

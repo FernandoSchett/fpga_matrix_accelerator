@@ -83,6 +83,7 @@ architecture rtl of sdram_ip_core is
     signal core_rd_enable : std_logic;
     signal data_mask_low  : std_logic;
     signal data_mask_high : std_logic;
+    signal active_be_n    : std_logic_vector(1 downto 0) := (others => '0');
 
 begin
 
@@ -92,8 +93,22 @@ begin
     za_waitrequest <= core_busy;
     za_valid       <= core_rd_ready;
     za_data        <= core_rd_data;
-    zs_dqm(0)      <= data_mask_low or az_be_n(0);
-    zs_dqm(1)      <= data_mask_high or az_be_n(1);
+    zs_dqm(0)      <= data_mask_low or active_be_n(0);
+    zs_dqm(1)      <= data_mask_high or active_be_n(1);
+
+    process(clk, reset_n)
+    begin
+        if reset_n = '0' then
+            active_be_n <= (others => '0');
+
+        elsif rising_edge(clk) then
+            if core_wr_enable = '1' then
+                active_be_n <= az_be_n;
+            elsif core_rd_enable = '1' or core_busy = '0' then
+                active_be_n <= (others => '0');
+            end if;
+        end if;
+    end process;
 
     u_vendor_sdram : sdram_controller
         generic map (

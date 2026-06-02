@@ -243,6 +243,7 @@ begin
         expect_tx_byte(tx_start, tx_byte, RESP_ACK, "LOAD_B ACK");
 
         accelerator_busy <= '0';
+        host_cmd_ready <= '1';
         send_byte(rx_valid, rx_byte, CMD_START);
         wait for 1 ns;
 
@@ -262,6 +263,7 @@ begin
         end if;
 
         expect_tx_byte(tx_start, tx_byte, RESP_ACK, "START ACK");
+        host_cmd_ready <= '0';
 
         accelerator_busy <= '1';
         accelerator_done <= '0';

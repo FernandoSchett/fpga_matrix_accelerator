@@ -451,7 +451,7 @@ begin
     LEDR(6) <= status_load_active;
     LEDR(7) <= status_compute_active;
     LEDR(8) <= status_store_active;
-    LEDR(9) <= dbg_error_seen or dbg_done_seen;
+    LEDR(9) <= dbg_done_seen;
 
     u_sigma_hex : entity work.sigma_hex_display
         port map (

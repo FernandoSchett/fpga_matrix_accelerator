@@ -242,11 +242,11 @@ begin
                     end if;
 
                 when ISSUE_START =>
-                    if accelerator_busy = '0' then
+                    if accelerator_busy = '1' then
+                        state <= SEND_NAK;
+                    elsif host_cmd_ready = '1' then
                         start_reg <= '1';
                         state     <= SEND_ACK;
-                    else
-                        state <= SEND_NAK;
                     end if;
 
                 when ISSUE_CLEAR =>

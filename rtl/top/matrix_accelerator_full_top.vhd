@@ -312,6 +312,8 @@ begin
             NUM_MACS            => NUM_MACS,
             DATA_WIDTH          => DATA_WIDTH,
             ACC_WIDTH           => ACC_WIDTH,
+            MEMORY_BANKS_A      => MEMORY_BANKS_A,
+            MEMORY_BANKS_B      => MEMORY_BANKS_B,
             SDRAM_ADDR_W        => SDRAM_ADDR_W,
             SDRAM_DATA_W        => SDRAM_DATA_W,
             SDRAM_SIMULATION_MODEL => SDRAM_SIMULATION_MODEL,

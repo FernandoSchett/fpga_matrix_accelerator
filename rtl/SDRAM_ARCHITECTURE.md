@@ -12,13 +12,16 @@ A migracao basica para SDRAM esta integrada:
 - O top expoe portas fisicas `DRAM_*` da DE0-CV.
 - `memory/sdram_controller_wrapper.vhd` tem dois modos:
   - `SIMULATION_MODEL=true`: memoria byte-addressed emulada para testbench.
-  - `SIMULATION_MODEL=false`: controlador SDRAM fisico simples, com init, refresh, acesso 16-bit e interface 32-bit.
+  - `SIMULATION_MODEL=false`: adaptador para IP SDRAM externo `sdram_ip_core`.
+- `memory/sdram_ip_core.vhd` adapta a interface interna byte-addressed/Avalon-like para o IP SDRAM 16-bit.
+- `ip/stffrdhrn_sdram_controller/` contem o IP SDR SDRAM vendorizado usado no hardware.
 - `control/command_interface.vhd` usa handshake `host_cmd_valid`/`host_cmd_ready`; `READ_C` espera `host_rd_valid`.
 - `control/memory_manager.vhd` arbitra host, writer e loader no barramento SDRAM.
-- `control/tile_loader.vhd` carrega `A`/`B` da SDRAM e inicializa `C` com zero quando `ACCUMULATE_C=false`.
+- `control/tile_loader.vhd` carrega um painel de tiles `A`/`B` da SDRAM e inicializa `C` com zero quando `ACCUMULATE_C=false`.
 - `control/tile_writer.vhd` grava o tile `C` final na SDRAM.
-- `control/sdram_tile_scheduler.vhd` agenda loops tiled `i`, `j`, `k`.
+- `control/sdram_tile_scheduler.vhd` agenda loops tiled `i`, `j` e paineis em `k`.
 - `memory/tile_buffer_m10k.vhd` e usado como buffer local de tile, nao como matriz completa.
+- `compute/matrix_mult_sdram_tiled_core.vhd` instancia varios bancos M10K de `A` e `B` via `MEMORY_BANKS_A/B`; `C` permanece um tile acumulador M10K.
 
 `matrix_mult_tiled_core` continua no repo como legado/teste, mas nao e mais o caminho principal do top.
 
@@ -47,9 +50,13 @@ rtl/control/
 rtl/memory/
   matrix_single_port_ram.vhd    legado: RAM interna de matriz completa
   sdram_bus_if.vhd              constantes da interface SDRAM
-  sdram_controller_wrapper.vhd  modelo sim + controlador SDRAM fisico simples
+  sdram_ip_core.vhd             wrapper Avalon-like para IP SDRAM 16-bit
+  sdram_controller_wrapper.vhd  modelo sim + adaptador fisico para IP
   matrix_memory_map.vhd         mapa byte das matrizes
   tile_buffer_m10k.vhd          buffer local por tile
+
+rtl/ip/
+  stffrdhrn_sdram_controller/   IP SDR SDRAM BSD usado no caminho fisico
 
 rtl/compute/
   mac_unit.vhd                  MAC assinado
@@ -89,10 +96,10 @@ N=1024: A=1 MiB,   B=1 MiB,   C=4 MiB, total ~= 6 MiB
 Isso justifica SDRAM como memoria principal. Exemplo `TILE_SIZE=16` em M10K:
 
 ```text
-A_tile int8  = 16*16*1 = 256 B
-B_tile int8  = 16*16*1 = 256 B
-C_tile int32 = 16*16*4 = 1024 B
-total por buffer simples ~= 1.5 KiB
+A_tile int8 por banco = 16*16*1 = 256 B
+B_tile int8 por banco = 16*16*1 = 256 B
+C_tile int32          = 16*16*4 = 1024 B
+total com 4 bancos A/B ~= 4*(256+256) + 1024 = 3072 B
 ```
 
 ## Fluxo FSM Atual
@@ -105,17 +112,19 @@ UART LOAD_B -> command_interface -> matrix_mult_sdram_tiled_core
             -> memory_manager -> sdram_controller_wrapper -> SDRAM[B]
 
 START
-  scheduler gera tile_i, tile_j, tile_k
-  tile_loader carrega A_tile e B_tile da SDRAM para M10K
-  se tile_k=0:
+  scheduler gera tile_i, tile_j, tile_k_base e panel_count
+  tile_loader carrega panel_count tiles de A para bancos A_M10K[0..panel_count-1]
+  tile_loader carrega panel_count tiles de B para bancos B_M10K[0..panel_count-1]
+  se tile_k_base=0:
     ACCUMULATE_C=false -> zera C_tile em M10K
     ACCUMULATE_C=true  -> le C_tile da SDRAM
-  compute wrapper empacota buffers M10K em vetores
-  matrix_tiled_compute_core calcula C_tile += A_tile * B_tile
-  resultado volta para C_buffer M10K
-  se tile_k ainda nao terminou:
-    proximo k recarrega A/B e preserva C_buffer parcial
-  se ultimo k:
+  para cada banco valido no painel:
+    compute wrapper empacota A_bank, B_bank e C_tile em vetores
+    matrix_tiled_compute_core calcula C_tile += A_bank * B_bank
+    resultado volta para C_buffer M10K
+  se k ainda nao terminou:
+    proximo painel k recarrega A/B e preserva C_buffer parcial
+  se ultimo painel k:
     tile_writer grava C_tile final em SDRAM[C]
 DONE
 
@@ -145,20 +154,22 @@ DONE
 - Top-level usa `matrix_mult_sdram_tiled_core`, nao `matrix_mult_tiled_core`.
 - Host escreve `A`/`B` direto na SDRAM via `memory_manager`.
 - Host le `C` final da SDRAM via comando aceito por `host_cmd_ready` e retorno `host_rd_valid`.
-- `sdram_controller_wrapper` retorna leitura real no modelo de sim e sintetiza controlador fisico simples.
+- `sdram_controller_wrapper` retorna leitura real no modelo de sim e usa IP SDRAM externo no hardware.
 - Enderecamento e byte-addressed: `A`/`B` usam `int8`; `C` usa `int32`.
-- Escrita `int8` em barramento 32-bit usa byte address + DQM no controlador 16-bit fisico.
+- Escrita `int8` em barramento 32-bit usa byte address + DQM no IP SDRAM 16-bit fisico.
 - `C` inicial zera no primeiro `k` quando `ACCUMULATE_C=false`.
 - `tile_buffer_m10k` single-port nao alimenta MACs diretamente; o wrapper empacota o tile antes do compute, evitando conflito de portas.
+- `MEMORY_BANKS_A/B` agora criam bancos reais de M10K para painel em `k`; o loader enche varios tiles A/B antes do compute consumir o painel.
 - `perf_counters` recebe `mac_ops_issued` real do compute core, nao `NUM_MACS` durante todo `busy`.
 
 ## Lacunas Restantes
 
-- Controlador SDRAM fisico e basico: single-beat, sem burst, sem row cache e sem PLL/phase shift dedicado para `DRAM_CLK`.
+- Panel buffering atual e um painel em `k` para um unico tile `C`. Ainda nao e block buffering 2D mantendo varios tiles de `C` e reutilizando paineis A/B em varios tiles de saida.
+- IP SDRAM fisico e basico: single-beat, sem burst, sem row cache e sem PLL/phase shift dedicado para `DRAM_CLK`.
 - Timing de I/O SDRAM ainda nao esta totalmente fechado no SDC; o Quartus compila, mas reporta design nao totalmente constrained.
 - `matrix_tiled_compute_core` ainda usa vetores achatados; wrapper faz pack/unpack sequencial dos M10K. Correto para funcionalidade, lento para tiles grandes.
 - `memory_manager` ainda e arbitro simples, sem filas profundas nem burst coalescing.
-- Testes cobrem caminho UART/top com modelo SDRAM pequeno; ainda faltam testes unitarios dedicados para loader/writer/manager/controlador fisico.
+- Testes cobrem caminho UART/top com modelo SDRAM pequeno; ainda faltam testes unitarios dedicados para loader/writer/manager/IP fisico.
 - Double buffering ainda nao esta implementado.
 
 ## Evolucao: Double Buffering
@@ -201,5 +212,5 @@ Para hardware robusto:
 
 - validar SDRAM fisica na placa com padrao write/read antes do acelerador;
 - fechar constraints de SDRAM I/O;
-- trocar controlador simples por IP/PLL validado, se precisar margem real;
+- adicionar PLL/phase shift dedicado para `DRAM_CLK`, se precisar margem real;
 - adicionar burst/double buffering para desempenho.

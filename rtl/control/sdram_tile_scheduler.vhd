@@ -3,8 +3,9 @@ use ieee.std_logic_1164.all;
 
 entity sdram_tile_scheduler is
     generic (
-        N         : positive := 512;
-        TILE_SIZE : positive := 16
+        N           : positive := 512;
+        TILE_SIZE   : positive := 16;
+        PANEL_TILES : positive := 1
     );
     port (
         clk : in std_logic;
@@ -17,6 +18,7 @@ entity sdram_tile_scheduler is
         tile_i : out natural range 0 to (N/TILE_SIZE)-1;
         tile_j : out natural range 0 to (N/TILE_SIZE)-1;
         tile_k : out natural range 0 to (N/TILE_SIZE)-1;
+        panel_count : out natural range 1 to PANEL_TILES;
 
         load_c        : out std_logic;
         loader_start  : out std_logic;
@@ -54,6 +56,17 @@ architecture rtl of sdram_tile_scheduler is
     signal tile_i_reg : natural range 0 to NUM_TILES-1 := 0;
     signal tile_j_reg : natural range 0 to NUM_TILES-1 := 0;
     signal tile_k_reg : natural range 0 to NUM_TILES-1 := 0;
+    signal panel_count_reg : natural range 1 to PANEL_TILES := 1;
+
+    function active_panel_count(k_base : natural) return natural is
+        variable remaining_tiles : natural;
+    begin
+        remaining_tiles := NUM_TILES - k_base;
+        if remaining_tiles < PANEL_TILES then
+            return remaining_tiles;
+        end if;
+        return PANEL_TILES;
+    end function;
 
 begin
 
@@ -64,6 +77,7 @@ begin
     tile_i <= tile_i_reg;
     tile_j <= tile_j_reg;
     tile_k <= tile_k_reg;
+    panel_count <= panel_count_reg;
 
     load_c <= '1' when tile_k_reg = 0 else '0';
 
@@ -78,6 +92,7 @@ begin
             tile_i_reg    <= 0;
             tile_j_reg    <= 0;
             tile_k_reg    <= 0;
+            panel_count_reg <= 1;
             busy          <= '0';
             done          <= '0';
             tile_done     <= '0';
@@ -100,6 +115,7 @@ begin
                         tile_i_reg <= 0;
                         tile_j_reg <= 0;
                         tile_k_reg <= 0;
+                        panel_count_reg <= active_panel_count(0);
                         state      <= START_LOAD;
                     end if;
 
@@ -127,11 +143,12 @@ begin
 
                 when NEXT_K =>
                     busy <= '1';
-                    if tile_k_reg = NUM_TILES-1 then
+                    if tile_k_reg + panel_count_reg >= NUM_TILES then
                         state <= START_WRITE;
                     else
-                        tile_k_reg <= tile_k_reg + 1;
-                        state      <= START_LOAD;
+                        tile_k_reg <= tile_k_reg + panel_count_reg;
+                        panel_count_reg <= active_panel_count(tile_k_reg + panel_count_reg);
+                        state <= START_LOAD;
                     end if;
 
                 when START_WRITE =>
@@ -149,6 +166,7 @@ begin
                 when NEXT_TILE =>
                     busy       <= '1';
                     tile_k_reg <= 0;
+                    panel_count_reg <= active_panel_count(0);
                     if tile_j_reg = NUM_TILES-1 then
                         tile_j_reg <= 0;
                         if tile_i_reg = NUM_TILES-1 then

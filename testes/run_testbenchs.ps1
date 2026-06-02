@@ -197,6 +197,7 @@ function Get-RtlSources {
         "rtl/memory/matrix_single_port_ram.vhd",
         "rtl/memory/matrix_memory_map.vhd",
         "rtl/memory/tile_buffer_m10k.vhd",
+        "rtl/memory/sdram_ip_core.vhd",
         "rtl/memory/sdram_controller_wrapper.vhd",
         "rtl/control/memory_manager.vhd",
         "rtl/control/tile_loader.vhd",

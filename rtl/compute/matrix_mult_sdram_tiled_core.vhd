@@ -13,6 +13,8 @@ entity matrix_mult_sdram_tiled_core is
         NUM_MACS            : positive := 4;
         DATA_WIDTH          : positive := 8;
         ACC_WIDTH           : positive := 32;
+        MEMORY_BANKS_A      : positive := 1;
+        MEMORY_BANKS_B      : positive := 1;
         SDRAM_ADDR_W        : positive := 26;
         SDRAM_DATA_W        : positive := 32;
         SDRAM_SIMULATION_MODEL : boolean := true;
@@ -62,6 +64,14 @@ end entity matrix_mult_sdram_tiled_core;
 
 architecture rtl of matrix_mult_sdram_tiled_core is
 
+    function min_positive(left_value : positive; right_value : positive) return positive is
+    begin
+        if left_value < right_value then
+            return left_value;
+        end if;
+        return right_value;
+    end function;
+
     function select_base(configured_base : natural; default_base : natural) return natural is
     begin
         if configured_base = 0 then
@@ -73,6 +83,7 @@ architecture rtl of matrix_mult_sdram_tiled_core is
     constant HOST_ADDR_W    : positive := clog2(N * N);
     constant LOCAL_W        : positive := clog2(TILE_SIZE);
     constant TILE_ELEMS     : positive := TILE_SIZE * TILE_SIZE;
+    constant PANEL_TILES    : positive := min_positive(MEMORY_BANKS_A, MEMORY_BANKS_B);
     constant SDRAM_BYTES    : positive := SDRAM_DATA_W / 8;
     constant DATA_BYTES     : positive := (DATA_WIDTH + 7) / 8;
     constant ACC_BYTES      : positive := (ACC_WIDTH + 7) / 8;
@@ -106,6 +117,7 @@ architecture rtl of matrix_mult_sdram_tiled_core is
     signal sched_tile_i        : natural range 0 to (N/TILE_SIZE)-1;
     signal sched_tile_j        : natural range 0 to (N/TILE_SIZE)-1;
     signal sched_tile_k        : natural range 0 to (N/TILE_SIZE)-1;
+    signal sched_panel_count   : natural range 1 to PANEL_TILES;
     signal sched_load_c        : std_logic;
     signal sched_loader_start  : std_logic;
     signal sched_loader_done   : std_logic;
@@ -154,11 +166,13 @@ architecture rtl of matrix_mult_sdram_tiled_core is
     signal loader_a_wr_en   : std_logic;
     signal loader_a_wr_row  : unsigned(LOCAL_W-1 downto 0);
     signal loader_a_wr_col  : unsigned(LOCAL_W-1 downto 0);
+    signal loader_a_wr_bank : natural range 0 to PANEL_TILES-1;
     signal loader_a_wr_data : signed(DATA_WIDTH-1 downto 0);
 
     signal loader_b_wr_en   : std_logic;
     signal loader_b_wr_row  : unsigned(LOCAL_W-1 downto 0);
     signal loader_b_wr_col  : unsigned(LOCAL_W-1 downto 0);
+    signal loader_b_wr_bank : natural range 0 to PANEL_TILES-1;
     signal loader_b_wr_data : signed(DATA_WIDTH-1 downto 0);
 
     signal loader_c_wr_en   : std_logic;
@@ -172,6 +186,15 @@ architecture rtl of matrix_mult_sdram_tiled_core is
     signal b_rd_row  : unsigned(LOCAL_W-1 downto 0) := (others => '0');
     signal b_rd_col  : unsigned(LOCAL_W-1 downto 0) := (others => '0');
     signal b_rd_data : signed(DATA_WIDTH-1 downto 0);
+    signal compute_panel_idx : natural range 0 to PANEL_TILES-1 := 0;
+
+    type tile_data_array_t is array (natural range <>) of signed(DATA_WIDTH-1 downto 0);
+    type std_logic_array_t is array (natural range <>) of std_logic;
+
+    signal a_rd_data_bank : tile_data_array_t(0 to PANEL_TILES-1);
+    signal b_rd_data_bank : tile_data_array_t(0 to PANEL_TILES-1);
+    signal a_wr_en_bank   : std_logic_array_t(0 to PANEL_TILES-1);
+    signal b_wr_en_bank   : std_logic_array_t(0 to PANEL_TILES-1);
 
     signal pack_c_rd_row : unsigned(LOCAL_W-1 downto 0) := (others => '0');
     signal pack_c_rd_col : unsigned(LOCAL_W-1 downto 0) := (others => '0');
@@ -237,6 +260,10 @@ begin
         report "matrix_mult_sdram_tiled_core basico assume A/B int8, C int32 e SDRAM 32 bits."
         severity failure;
 
+    assert MEMORY_BANKS_A = MEMORY_BANKS_B
+        report "matrix_mult_sdram_tiled_core exige MEMORY_BANKS_A = MEMORY_BANKS_B para panel buffering."
+        severity failure;
+
     busy <= sched_busy;
     done <= sched_done;
     data_out <= data_out_reg;
@@ -244,6 +271,8 @@ begin
     host_accept_ready <= '1' when host_pending = '0' and sched_busy = '0' else '0';
     host_cmd_ready <= host_accept_ready;
     mac_ops_issued <= resize(core_mac_ops_issued, mac_ops_issued'length);
+    a_rd_data <= a_rd_data_bank(compute_panel_idx);
+    b_rd_data <= b_rd_data_bank(compute_panel_idx);
 
     c_rd_row_mux <= writer_c_rd_row when writer_busy = '1' else pack_c_rd_row;
     c_rd_col_mux <= writer_c_rd_col when writer_busy = '1' else pack_c_rd_col;
@@ -324,7 +353,8 @@ begin
     u_scheduler : entity work.sdram_tile_scheduler
         generic map (
             N => N,
-            TILE_SIZE => TILE_SIZE
+            TILE_SIZE => TILE_SIZE,
+            PANEL_TILES => PANEL_TILES
         )
         port map (
             clk => clk,
@@ -335,6 +365,7 @@ begin
             tile_i => sched_tile_i,
             tile_j => sched_tile_j,
             tile_k => sched_tile_k,
+            panel_count => sched_panel_count,
             load_c => sched_load_c,
             loader_start  => sched_loader_start,
             loader_done   => sched_loader_done,
@@ -352,6 +383,7 @@ begin
         generic map (
             N => N,
             TILE_SIZE => TILE_SIZE,
+            PANEL_TILES => PANEL_TILES,
             DATA_WIDTH => DATA_WIDTH,
             ACC_WIDTH => ACC_WIDTH,
             SDRAM_ADDR_W => SDRAM_ADDR_W,
@@ -369,6 +401,7 @@ begin
             tile_i => sched_tile_i,
             tile_j => sched_tile_j,
             tile_k => sched_tile_k,
+            panel_count => sched_panel_count,
             busy => loader_busy,
             done => sched_loader_done,
             mem_rd_req => loader_rd_req,
@@ -379,10 +412,12 @@ begin
             a_wr_en => loader_a_wr_en,
             a_wr_row => loader_a_wr_row,
             a_wr_col => loader_a_wr_col,
+            a_wr_bank => loader_a_wr_bank,
             a_wr_data => loader_a_wr_data,
             b_wr_en => loader_b_wr_en,
             b_wr_row => loader_b_wr_row,
             b_wr_col => loader_b_wr_col,
+            b_wr_bank => loader_b_wr_bank,
             b_wr_data => loader_b_wr_data,
             c_wr_en => loader_c_wr_en,
             c_wr_row => loader_c_wr_row,
@@ -420,37 +455,43 @@ begin
             mem_wr_ready => writer_wr_ready
         );
 
-    u_a_buffer : entity work.tile_buffer_m10k
-        generic map (
-            TILE_SIZE => TILE_SIZE,
-            DATA_WIDTH => DATA_WIDTH
-        )
-        port map (
-            clk => clk,
-            wr_en => loader_a_wr_en,
-            wr_row => loader_a_wr_row,
-            wr_col => loader_a_wr_col,
-            wr_data => loader_a_wr_data,
-            rd_row => a_rd_row,
-            rd_col => a_rd_col,
-            rd_data => a_rd_data
-        );
+    gen_panel_buffers : for bank_idx in 0 to PANEL_TILES-1 generate
+    begin
+        a_wr_en_bank(bank_idx) <= '1' when loader_a_wr_en = '1' and loader_a_wr_bank = bank_idx else '0';
+        b_wr_en_bank(bank_idx) <= '1' when loader_b_wr_en = '1' and loader_b_wr_bank = bank_idx else '0';
 
-    u_b_buffer : entity work.tile_buffer_m10k
-        generic map (
-            TILE_SIZE => TILE_SIZE,
-            DATA_WIDTH => DATA_WIDTH
-        )
-        port map (
-            clk => clk,
-            wr_en => loader_b_wr_en,
-            wr_row => loader_b_wr_row,
-            wr_col => loader_b_wr_col,
-            wr_data => loader_b_wr_data,
-            rd_row => b_rd_row,
-            rd_col => b_rd_col,
-            rd_data => b_rd_data
-        );
+        u_a_buffer : entity work.tile_buffer_m10k
+            generic map (
+                TILE_SIZE => TILE_SIZE,
+                DATA_WIDTH => DATA_WIDTH
+            )
+            port map (
+                clk => clk,
+                wr_en => a_wr_en_bank(bank_idx),
+                wr_row => loader_a_wr_row,
+                wr_col => loader_a_wr_col,
+                wr_data => loader_a_wr_data,
+                rd_row => a_rd_row,
+                rd_col => a_rd_col,
+                rd_data => a_rd_data_bank(bank_idx)
+            );
+
+        u_b_buffer : entity work.tile_buffer_m10k
+            generic map (
+                TILE_SIZE => TILE_SIZE,
+                DATA_WIDTH => DATA_WIDTH
+            )
+            port map (
+                clk => clk,
+                wr_en => b_wr_en_bank(bank_idx),
+                wr_row => loader_b_wr_row,
+                wr_col => loader_b_wr_col,
+                wr_data => loader_b_wr_data,
+                rd_row => b_rd_row,
+                rd_col => b_rd_col,
+                rd_data => b_rd_data_bank(bank_idx)
+            );
+    end generate gen_panel_buffers;
 
     u_c_buffer : entity work.tile_buffer_m10k
         generic map (
@@ -541,6 +582,7 @@ begin
             compute_state <= COMPUTE_IDLE;
             pack_idx <= 0;
             unpack_idx <= 0;
+            compute_panel_idx <= 0;
             core_start <= '0';
             sched_compute_done <= '0';
             compute_c_wr_en <= '0';
@@ -566,6 +608,7 @@ begin
                 when COMPUTE_IDLE =>
                     if sched_compute_start = '1' then
                         pack_idx <= 0;
+                        compute_panel_idx <= 0;
                         compute_state <= PACK_SETUP;
                     end if;
 
@@ -623,8 +666,14 @@ begin
                     end if;
 
                 when COMPUTE_DONE_STATE =>
-                    sched_compute_done <= '1';
-                    compute_state <= COMPUTE_IDLE;
+                    if compute_panel_idx + 1 < sched_panel_count then
+                        compute_panel_idx <= compute_panel_idx + 1;
+                        pack_idx <= 0;
+                        compute_state <= PACK_SETUP;
+                    else
+                        sched_compute_done <= '1';
+                        compute_state <= COMPUTE_IDLE;
+                    end if;
             end case;
         end if;
     end process;

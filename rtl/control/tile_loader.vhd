@@ -10,6 +10,7 @@ entity tile_loader is
     generic (
         N              : positive := 512;
         TILE_SIZE      : positive := 16;
+        PANEL_TILES    : positive := 1;
         DATA_WIDTH     : positive := 8;
         ACC_WIDTH      : positive := 32;
         SDRAM_ADDR_W   : positive := 25;
@@ -28,6 +29,7 @@ entity tile_loader is
         tile_i : in natural range 0 to (N/TILE_SIZE)-1;
         tile_j : in natural range 0 to (N/TILE_SIZE)-1;
         tile_k : in natural range 0 to (N/TILE_SIZE)-1;
+        panel_count : in natural range 1 to PANEL_TILES;
         busy   : out std_logic;
         done   : out std_logic;
 
@@ -40,11 +42,13 @@ entity tile_loader is
         a_wr_en   : out std_logic;
         a_wr_row  : out unsigned(clog2(TILE_SIZE)-1 downto 0);
         a_wr_col  : out unsigned(clog2(TILE_SIZE)-1 downto 0);
+        a_wr_bank : out natural range 0 to PANEL_TILES-1;
         a_wr_data : out signed(DATA_WIDTH-1 downto 0);
 
         b_wr_en   : out std_logic;
         b_wr_row  : out unsigned(clog2(TILE_SIZE)-1 downto 0);
         b_wr_col  : out unsigned(clog2(TILE_SIZE)-1 downto 0);
+        b_wr_bank : out natural range 0 to PANEL_TILES-1;
         b_wr_data : out signed(DATA_WIDTH-1 downto 0);
 
         c_wr_en   : out std_logic;
@@ -80,6 +84,7 @@ architecture rtl of tile_loader is
 
     signal state    : state_t := IDLE;
     signal elem_idx : natural range 0 to TILE_ELEMS-1 := 0;
+    signal panel_idx : natural range 0 to PANEL_TILES-1 := 0;
 
     function local_row(idx : natural) return natural is
     begin
@@ -111,10 +116,13 @@ begin
         if rst = '1' then
             state       <= IDLE;
             elem_idx    <= 0;
+            panel_idx   <= 0;
             mem_rd_req  <= '0';
             mem_rd_addr <= (others => '0');
             a_wr_en     <= '0';
+            a_wr_bank   <= 0;
             b_wr_en     <= '0';
+            b_wr_bank   <= 0;
             c_wr_en     <= '0';
             done        <= '0';
             busy        <= '0';
@@ -135,6 +143,7 @@ begin
                     if start = '1' then
                         busy     <= '1';
                         elem_idx <= 0;
+                        panel_idx <= 0;
                         state    <= REQ_A;
                     end if;
 
@@ -143,7 +152,7 @@ begin
                     mem_rd_req  <= '1';
                     mem_rd_addr <= byte_addr(BASE_A_BYTES,
                                              tile_i * TILE_SIZE + lr,
-                                             tile_k * TILE_SIZE + lc,
+                                             (tile_k + panel_idx) * TILE_SIZE + lc,
                                              DATA_BYTES);
                     if mem_rd_ready = '1' then
                         state <= WAIT_A;
@@ -155,6 +164,7 @@ begin
                         a_wr_en   <= '1';
                         a_wr_row  <= to_unsigned(lr, LOCAL_W);
                         a_wr_col  <= to_unsigned(lc, LOCAL_W);
+                        a_wr_bank <= panel_idx;
                         a_wr_data <= signed(mem_rd_data(DATA_WIDTH-1 downto 0));
                         state     <= REQ_B;
                     end if;
@@ -163,7 +173,7 @@ begin
                     busy        <= '1';
                     mem_rd_req  <= '1';
                     mem_rd_addr <= byte_addr(SELECT_BASE_B,
-                                             tile_k * TILE_SIZE + lr,
+                                             (tile_k + panel_idx) * TILE_SIZE + lr,
                                              tile_j * TILE_SIZE + lc,
                                              DATA_BYTES);
                     if mem_rd_ready = '1' then
@@ -176,15 +186,25 @@ begin
                         b_wr_en   <= '1';
                         b_wr_row  <= to_unsigned(lr, LOCAL_W);
                         b_wr_col  <= to_unsigned(lc, LOCAL_W);
+                        b_wr_bank <= panel_idx;
                         b_wr_data <= signed(mem_rd_data(DATA_WIDTH-1 downto 0));
-                        if load_c = '1' then
-                            if ACCUMULATE_C then
-                                state <= REQ_C;
+                        if elem_idx = TILE_ELEMS-1 then
+                            if panel_idx = panel_count-1 then
+                                elem_idx <= 0;
+                                if load_c = '1' then
+                                    if ACCUMULATE_C then
+                                        state <= REQ_C;
+                                    else
+                                        state <= INIT_C_ZERO;
+                                    end if;
+                                else
+                                    state <= DONE_STATE;
+                                end if;
                             else
-                                state <= INIT_C_ZERO;
+                                panel_idx <= panel_idx + 1;
+                                elem_idx  <= 0;
+                                state     <= REQ_A;
                             end if;
-                        elsif elem_idx = TILE_ELEMS-1 then
-                            state <= DONE_STATE;
                         else
                             elem_idx <= elem_idx + 1;
                             state    <= REQ_A;
@@ -201,7 +221,7 @@ begin
                         state <= DONE_STATE;
                     else
                         elem_idx <= elem_idx + 1;
-                        state    <= REQ_A;
+                        state    <= INIT_C_ZERO;
                     end if;
 
                 when REQ_C =>
@@ -226,7 +246,7 @@ begin
                             state <= DONE_STATE;
                         else
                             elem_idx <= elem_idx + 1;
-                            state    <= REQ_A;
+                            state    <= REQ_C;
                         end if;
                     end if;
 

@@ -93,6 +93,8 @@ architecture rtl of command_interface is
     signal host_matrix_sel_reg : std_logic_vector(1 downto 0) := MATRIX_ID_A;
     signal host_addr_reg       : unsigned(ADDR_WIDTH-1 downto 0) := (others => '0');
     signal host_data_in_reg    : std_logic_vector(DATA_WIDTH-1 downto 0) := (others => '0');
+    signal host_cmd_valid_reg  : std_logic := '0';
+    signal host_cmd_write_reg  : std_logic := '0';
     signal start_reg           : std_logic := '0';
     signal clear_reg           : std_logic := '0';
 
@@ -113,8 +115,8 @@ begin
     tx_start <= tx_start_reg;
     tx_byte  <= tx_byte_reg;
 
-    host_cmd_valid  <= '1' when state = ISSUE_LOAD or state = ISSUE_READ_C else '0';
-    host_cmd_write  <= '1' when state = ISSUE_LOAD else '0';
+    host_cmd_valid  <= host_cmd_valid_reg;
+    host_cmd_write  <= host_cmd_write_reg;
     host_matrix_sel <= host_matrix_sel_reg;
     host_addr       <= host_addr_reg;
     host_data_in    <= host_data_in_reg;
@@ -142,6 +144,8 @@ begin
             host_matrix_sel_reg <= MATRIX_ID_A;
             host_addr_reg       <= (others => '0');
             host_data_in_reg    <= (others => '0');
+            host_cmd_valid_reg  <= '0';
+            host_cmd_write_reg  <= '0';
             start_reg           <= '0';
             clear_reg           <= '0';
 
@@ -154,6 +158,8 @@ begin
                 when IDLE =>
                     byte_count <= 0;
                     tx_index   <= 0;
+                    host_cmd_valid_reg <= '0';
+                    host_cmd_write_reg <= '0';
 
                     if rx_valid = '1' then
                         opcode_reg <= rx_byte;
@@ -190,6 +196,8 @@ begin
 
                             if opcode_reg = CMD_READ_C then
                                 host_addr_reg <= resize(unsigned(next_addr), ADDR_WIDTH);
+                                host_cmd_valid_reg <= '1';
+                                host_cmd_write_reg <= '0';
                                 state         <= ISSUE_READ_C;
                             else
                                 data_shift <= (others => '0');
@@ -216,6 +224,8 @@ begin
                                 host_matrix_sel_reg <= MATRIX_ID_B;
                             end if;
 
+                            host_cmd_valid_reg <= '1';
+                            host_cmd_write_reg <= '1';
                             state <= ISSUE_LOAD;
                         else
                             byte_count <= byte_count + 1;
@@ -223,7 +233,11 @@ begin
                     end if;
 
                 when ISSUE_LOAD =>
+                    host_cmd_valid_reg <= '1';
+                    host_cmd_write_reg <= '1';
                     if host_cmd_ready = '1' then
+                        host_cmd_valid_reg <= '0';
+                        host_cmd_write_reg <= '0';
                         state <= SEND_ACK;
                     end if;
 
@@ -244,7 +258,10 @@ begin
                     end if;
 
                 when ISSUE_READ_C =>
+                    host_cmd_valid_reg <= '1';
+                    host_cmd_write_reg <= '0';
                     if host_cmd_ready = '1' then
+                        host_cmd_valid_reg <= '0';
                         state <= WAIT_READ_C;
                     end if;
 

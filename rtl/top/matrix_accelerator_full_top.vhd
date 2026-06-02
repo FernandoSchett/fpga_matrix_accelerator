@@ -166,7 +166,7 @@ begin
     uart_tx_o <= uart_tx_serial;
     uart_tx_byte <= tx_byte_reg;
 
-    accel_start <= start_button or cmd_start;
+    accel_start <= cmd_start;
     accel_rst   <= rst or cmd_clear;
 
     host_data_out <= std_logic_vector(resize(accel_data_out, HOST_DATA_WIDTH));

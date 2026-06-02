@@ -96,27 +96,12 @@ begin
             severity failure;
 
         start_button <= '1';
-        wait until rising_edge(clk);
+        wait_cycles(3);
         start_button <= '0';
+        wait_cycles(3);
 
-        wait_cycles(2);
-        assert HEX5 = "0010010" and HEX4 = "1111001" and HEX3 = "0000010" and
-               HEX2 = "0101011" and HEX1 = "0001000" and HEX0 = "0001001"
-            report "HEX deveria mostrar SIGMAX enquanto busy=1."
-            severity failure;
-
-        for cycle_idx in 0 to 2000 loop
-            wait until rising_edge(clk);
-            exit when ledr(8) = '1';
-        end loop;
-
-        assert ledr(8) = '1'
-            report "matrix_accelerator_full_top nao finalizou."
-            severity failure;
-
-        assert HEX0 = "1111111" and HEX1 = "1111111" and HEX2 = "1111111" and
-               HEX3 = "1111111" and HEX4 = "1111111" and HEX5 = "1111111"
-            report "HEX deveria apagar apos fim do experimento."
+        assert ledr(5) = '0'
+            report "start_button deve ficar desabilitado; START valido vem da UART."
             severity failure;
 
         report "SIM_RESULT: PASS" severity note;

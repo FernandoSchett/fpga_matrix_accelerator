@@ -309,7 +309,7 @@ set_parameter -name ACC_WIDTH 32
 set_parameter -name ACCUMULATE_C false
 set_parameter -name BUFFERING_MODE "single"
 set_parameter -name CLK_FREQ_HZ 50000000
-set_parameter -name CLKS_PER_BIT 50
+set_parameter -name CLKS_PER_BIT 434
 set_parameter -name DATA_WIDTH 8
 set_parameter -name DATAFLOW "output_stationary"
 set_parameter -name ENABLE_SIGNALTAP false

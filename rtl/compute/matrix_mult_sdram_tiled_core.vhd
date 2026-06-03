@@ -237,7 +237,11 @@ begin
     done <= sched_done;
     data_out <= data_out_reg;
     rd_valid <= data_out_valid_reg;
-    host_accept_ready <= '1' when host_pending = '0' and sched_busy = '0' else '0';
+    host_accept_ready <= '1' when host_pending = '0' and
+                                  sched_busy = '0' and
+                                  sdram_busy = '0' and
+                                  sdram_cmd_ready = '1'
+                         else '0';
     host_cmd_ready <= host_accept_ready;
     mac_ops_issued <= resize(core_mac_ops_issued, mac_ops_issued'length);
     a_rd_data <= a_rd_data_bank(compute_panel_idx);

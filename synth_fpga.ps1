@@ -37,6 +37,130 @@ $QsfPath = Join-Path $ProjectDir "$ProjectName.qsf"
 
 Set-Location $ProjectDir
 
+$UserBoundParameters = $PSBoundParameters.Clone()
+
+function Read-DotEnvFile {
+    param([string]$Path)
+
+    $values = @{}
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return $values
+    }
+
+    foreach ($rawLine in Get-Content -LiteralPath $Path) {
+        $line = $rawLine.Trim()
+
+        if ($line.Length -eq 0 -or $line.StartsWith("#")) {
+            continue
+        }
+        if ($line -notmatch "=") {
+            continue
+        }
+
+        $key, $value = $line.Split("=", 2)
+        $key = $key.Trim()
+        $value = $value.Trim().Trim('"').Trim("'")
+
+        if ($key.Length -gt 0) {
+            $values[$key] = $value
+            [System.Environment]::SetEnvironmentVariable($key, $value, "Process")
+        }
+    }
+
+    return $values
+}
+
+function Get-DotEnvValue {
+    param(
+        [hashtable]$Values,
+        [string[]]$Names
+    )
+
+    foreach ($name in $Names) {
+        if ($Values.ContainsKey($name)) {
+            return $Values[$name]
+        }
+    }
+
+    return $null
+}
+
+function ConvertTo-DotEnvBool {
+    param(
+        [string]$Name,
+        [string]$Value
+    )
+
+    $normalized = $Value.Trim().ToLowerInvariant()
+    if (@("1", "true", "yes", "y", "on") -contains $normalized) {
+        return $true
+    }
+    if (@("0", "false", "no", "n", "off") -contains $normalized) {
+        return $false
+    }
+
+    throw "$Name precisa ser booleano no .env. Valor recebido: $Value"
+}
+
+function Set-DefaultFromDotEnv {
+    param(
+        [hashtable]$Values,
+        [string]$ParamName,
+        [string[]]$EnvNames,
+        [ValidateSet("int", "string", "switch")]
+        [string]$Type
+    )
+
+    if ($script:UserBoundParameters.ContainsKey($ParamName)) {
+        return
+    }
+
+    $raw = Get-DotEnvValue -Values $Values -Names $EnvNames
+    if ($null -eq $raw) {
+        return
+    }
+
+    if ($Type -eq "int") {
+        Set-Variable -Name $ParamName -Value ([int]$raw) -Scope Script
+    } elseif ($Type -eq "switch") {
+        Set-Variable -Name $ParamName -Value (ConvertTo-DotEnvBool -Name $EnvNames[0] -Value $raw) -Scope Script
+    } else {
+        Set-Variable -Name $ParamName -Value $raw -Scope Script
+    }
+}
+
+$RootEnvPath = Join-Path $ProjectDir ".env"
+$RootEnv = Read-DotEnvFile -Path $RootEnvPath
+
+Set-DefaultFromDotEnv -Values $RootEnv -ParamName "N" -EnvNames @("N") -Type "int"
+Set-DefaultFromDotEnv -Values $RootEnv -ParamName "TileSize" -EnvNames @("TILE_SIZE", "TileSize") -Type "int"
+Set-DefaultFromDotEnv -Values $RootEnv -ParamName "NumMacs" -EnvNames @("NUM_MACS", "NumMacs") -Type "int"
+Set-DefaultFromDotEnv -Values $RootEnv -ParamName "DataWidth" -EnvNames @("DATA_WIDTH", "DataWidth") -Type "int"
+Set-DefaultFromDotEnv -Values $RootEnv -ParamName "AccWidth" -EnvNames @("ACC_WIDTH", "AccWidth") -Type "int"
+Set-DefaultFromDotEnv -Values $RootEnv -ParamName "MemType" -EnvNames @("MEM_TYPE", "MemType") -Type "string"
+Set-DefaultFromDotEnv -Values $RootEnv -ParamName "Dataflow" -EnvNames @("DATAFLOW", "Dataflow") -Type "string"
+Set-DefaultFromDotEnv -Values $RootEnv -ParamName "BufferingMode" -EnvNames @("BUFFERING_MODE", "BufferingMode") -Type "string"
+Set-DefaultFromDotEnv -Values $RootEnv -ParamName "MemoryBurstLen" -EnvNames @("MEMORY_BURST_LEN", "MemoryBurstLen") -Type "int"
+Set-DefaultFromDotEnv -Values $RootEnv -ParamName "MacPipelineStages" -EnvNames @("MAC_PIPELINE_STAGES", "MacPipelineStages") -Type "int"
+Set-DefaultFromDotEnv -Values $RootEnv -ParamName "MemoryBanksA" -EnvNames @("MEMORY_BANKS_A", "MemoryBanksA") -Type "int"
+Set-DefaultFromDotEnv -Values $RootEnv -ParamName "MemoryBanksB" -EnvNames @("MEMORY_BANKS_B", "MemoryBanksB") -Type "int"
+Set-DefaultFromDotEnv -Values $RootEnv -ParamName "ClksPerBit" -EnvNames @("CLKS_PER_BIT", "ClksPerBit") -Type "int"
+Set-DefaultFromDotEnv -Values $RootEnv -ParamName "ClkFreqHz" -EnvNames @("CLK_FREQ_HZ", "ClkFreqHz") -Type "int"
+Set-DefaultFromDotEnv -Values $RootEnv -ParamName "UartFifoDepth" -EnvNames @("UART_FIFO_DEPTH", "UartFifoDepth") -Type "int"
+Set-DefaultFromDotEnv -Values $RootEnv -ParamName "SdramAddrWidth" -EnvNames @("SDRAM_ADDR_W", "SDRAM_ADDR_WIDTH", "SdramAddrWidth") -Type "int"
+Set-DefaultFromDotEnv -Values $RootEnv -ParamName "SdramDataWidth" -EnvNames @("SDRAM_DATA_W", "SDRAM_DATA_WIDTH", "SdramDataWidth") -Type "int"
+Set-DefaultFromDotEnv -Values $RootEnv -ParamName "SdramSimulationModel" -EnvNames @("SDRAM_SIMULATION_MODEL", "SdramSimulationModel") -Type "string"
+Set-DefaultFromDotEnv -Values $RootEnv -ParamName "AccumulateC" -EnvNames @("ACCUMULATE_C", "AccumulateC") -Type "string"
+Set-DefaultFromDotEnv -Values $RootEnv -ParamName "EnableSignaltap" -EnvNames @("ENABLE_SIGNALTAP", "EnableSignaltap") -Type "string"
+Set-DefaultFromDotEnv -Values $RootEnv -ParamName "Clean" -EnvNames @("CLEAN", "Clean") -Type "switch"
+Set-DefaultFromDotEnv -Values $RootEnv -ParamName "UpdatePythonEnv" -EnvNames @("UPDATE_PYTHON_ENV", "UpdatePythonEnv") -Type "switch"
+Set-DefaultFromDotEnv -Values $RootEnv -ParamName "Program" -EnvNames @("PROGRAM", "Program") -Type "switch"
+Set-DefaultFromDotEnv -Values $RootEnv -ParamName "ProgramOnly" -EnvNames @("PROGRAM_ONLY", "ProgramOnly") -Type "switch"
+
+if (Test-Path -LiteralPath $RootEnvPath) {
+    Write-Host "Carregado .env da raiz: $RootEnvPath"
+}
+
 $HandshakeCheck = Join-Path $ProjectDir "testes\check_sdram_handshake.ps1"
 if ((-not $ProgramOnly) -and (Test-Path -LiteralPath $HandshakeCheck)) {
     & $HandshakeCheck
@@ -200,16 +324,66 @@ function Update-PythonEnvFile {
         New-Item -ItemType Directory -Force -Path $envDir | Out-Null
     }
 
+    $numTests = Get-DotEnvValue -Values $RootEnv -Names @("NUM_TESTS")
+    if ($null -eq $numTests) { $numTests = "1" }
+
+    $seed = Get-DotEnvValue -Values $RootEnv -Names @("SEED")
+    if ($null -eq $seed) { $seed = "123" }
+
+    $minValue = Get-DotEnvValue -Values $RootEnv -Names @("MIN_VALUE")
+    if ($null -eq $minValue) { $minValue = "-1" }
+
+    $maxValue = Get-DotEnvValue -Values $RootEnv -Names @("MAX_VALUE")
+    if ($null -eq $maxValue) { $maxValue = "1" }
+
+    $uartPort = Get-DotEnvValue -Values $RootEnv -Names @("UART_PORT")
+    if ($null -eq $uartPort) { $uartPort = "COM3" }
+
+    $uartBaudrate = Get-DotEnvValue -Values $RootEnv -Names @("UART_BAUDRATE")
+    if ($null -eq $uartBaudrate) { $uartBaudrate = "1000000" }
+
+    $uartTimeout = Get-DotEnvValue -Values $RootEnv -Names @("UART_TIMEOUT")
+    if ($null -eq $uartTimeout) { $uartTimeout = "180" }
+
+    $loadMode = Get-DotEnvValue -Values $RootEnv -Names @("LOAD_MODE")
+    if ($null -eq $loadMode) { $loadMode = "stream" }
+
+    $streamChunkElems = Get-DotEnvValue -Values $RootEnv -Names @("STREAM_CHUNK_ELEMS")
+    if ($null -eq $streamChunkElems) { $streamChunkElems = "4096" }
+
+    $streamMode = Get-DotEnvValue -Values $RootEnv -Names @("STREAM_MODE")
+    if ($null -eq $streamMode) { $streamMode = "interleaved" }
+
+    $readMode = Get-DotEnvValue -Values $RootEnv -Names @("READ_MODE")
+    if ($null -eq $readMode) { $readMode = "stream" }
+
+    $cStreamChunkElems = Get-DotEnvValue -Values $RootEnv -Names @("C_STREAM_CHUNK_ELEMS")
+    if ($null -eq $cStreamChunkElems) { $cStreamChunkElems = "4096" }
+
+    $readCounters = Get-DotEnvValue -Values $RootEnv -Names @("READ_COUNTERS")
+    if ($null -eq $readCounters) { $readCounters = "true" }
+
     $content = @"
 N=$N
-NUM_TESTS=1
+NUM_TESTS=$numTests
 DATA_WIDTH=$DataWidth
 ACC_WIDTH=$AccWidth
-SEED=123
-MIN_VALUE=-1
-MAX_VALUE=1
+SEED=$seed
+MIN_VALUE=$minValue
+MAX_VALUE=$maxValue
 EXAMPLE=false
 MATRIX_OUTPUT_DIR=matrix
+MATRIX_INPUT_FILE=matrix/matrix_inputs.txt
+MATRIX_EXPECTED_FILE=matrix/matrix_expected.txt
+UART_PORT=$uartPort
+UART_BAUDRATE=$uartBaudrate
+UART_TIMEOUT=$uartTimeout
+LOAD_MODE=$loadMode
+STREAM_MODE=$streamMode
+STREAM_CHUNK_ELEMS=$streamChunkElems
+READ_MODE=$readMode
+C_STREAM_CHUNK_ELEMS=$cStreamChunkElems
+READ_COUNTERS=$readCounters
 "@
 
     Set-Content -LiteralPath $EnvPath -Value $content -Encoding UTF8

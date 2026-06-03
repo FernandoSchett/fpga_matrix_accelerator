@@ -51,6 +51,9 @@ architecture rtl of command_interface is
 
     constant CMD_LOAD_A        : std_logic_vector(7 downto 0) := x"41"; -- 'A'
     constant CMD_LOAD_B        : std_logic_vector(7 downto 0) := x"42"; -- 'B'
+    constant CMD_STREAM_A      : std_logic_vector(7 downto 0) := x"61"; -- 'a'
+    constant CMD_STREAM_B      : std_logic_vector(7 downto 0) := x"62"; -- 'b'
+    constant CMD_STREAM_C      : std_logic_vector(7 downto 0) := x"72"; -- 'r'
     constant CMD_CLEAR         : std_logic_vector(7 downto 0) := x"43"; -- 'C'
     constant CMD_START         : std_logic_vector(7 downto 0) := x"53"; -- 'S'
     constant CMD_READ_C        : std_logic_vector(7 downto 0) := x"52"; -- 'R'
@@ -65,6 +68,9 @@ architecture rtl of command_interface is
         RECV_ADDR,
         RECV_DATA,
         ISSUE_LOAD,
+        RECV_STREAM_COUNT,
+        RECV_STREAM_DATA,
+        ISSUE_STREAM_LOAD,
         ISSUE_START,
         ISSUE_CLEAR,
         ISSUE_READ_C,
@@ -81,7 +87,11 @@ architecture rtl of command_interface is
     signal opcode_reg : std_logic_vector(7 downto 0) := (others => '0');
     signal addr_shift : std_logic_vector(31 downto 0) := (others => '0');
     signal data_shift : std_logic_vector(31 downto 0) := (others => '0');
+    signal stream_count_shift : std_logic_vector(15 downto 0) := (others => '0');
     signal byte_count : integer range 0 to 3 := 0;
+    signal stream_remaining : natural range 0 to 65535 := 0;
+    signal stream_addr_reg  : unsigned(ADDR_WIDTH-1 downto 0) := (others => '0');
+    signal stream_matrix_sel_reg : std_logic_vector(1 downto 0) := MATRIX_ID_A;
 
     signal tx_start_reg : std_logic := '0';
     signal tx_byte_reg  : std_logic_vector(7 downto 0) := (others => '0');
@@ -123,7 +133,12 @@ begin
     start           <= start_reg;
     clear           <= clear_reg;
 
-    rx_ready <= '1' when state = IDLE or state = RECV_ADDR or state = RECV_DATA else '0';
+    rx_ready <= '1' when state = IDLE or
+                         state = RECV_ADDR or
+                         state = RECV_DATA or
+                         state = RECV_STREAM_COUNT or
+                         state = RECV_STREAM_DATA
+                else '0';
 
     process(clk, rst)
         variable next_addr  : std_logic_vector(31 downto 0);
@@ -135,7 +150,11 @@ begin
             opcode_reg          <= (others => '0');
             addr_shift          <= (others => '0');
             data_shift          <= (others => '0');
+            stream_count_shift  <= (others => '0');
             byte_count          <= 0;
+            stream_remaining    <= 0;
+            stream_addr_reg     <= (others => '0');
+            stream_matrix_sel_reg <= MATRIX_ID_A;
             tx_start_reg        <= '0';
             tx_byte_reg         <= (others => '0');
             tx_word_reg         <= (others => '0');
@@ -164,9 +183,19 @@ begin
                     if rx_valid = '1' then
                         opcode_reg <= rx_byte;
 
-                        if rx_byte = CMD_LOAD_A or rx_byte = CMD_LOAD_B or rx_byte = CMD_READ_C then
+                        if rx_byte = CMD_LOAD_A or rx_byte = CMD_LOAD_B or
+                           rx_byte = CMD_READ_C or rx_byte = CMD_STREAM_C then
                             addr_shift <= (others => '0');
                             state      <= RECV_ADDR;
+
+                        elsif rx_byte = CMD_STREAM_A or rx_byte = CMD_STREAM_B then
+                            addr_shift <= (others => '0');
+                            if rx_byte = CMD_STREAM_A then
+                                stream_matrix_sel_reg <= MATRIX_ID_A;
+                            else
+                                stream_matrix_sel_reg <= MATRIX_ID_B;
+                            end if;
+                            state <= RECV_ADDR;
 
                         elsif rx_byte = CMD_START then
                             state <= ISSUE_START;
@@ -199,6 +228,11 @@ begin
                                 host_cmd_valid_reg <= '1';
                                 host_cmd_write_reg <= '0';
                                 state         <= ISSUE_READ_C;
+                            elsif opcode_reg = CMD_STREAM_A or opcode_reg = CMD_STREAM_B or
+                                  opcode_reg = CMD_STREAM_C then
+                                stream_addr_reg <= resize(unsigned(next_addr), ADDR_WIDTH);
+                                stream_count_shift <= (others => '0');
+                                state <= RECV_STREAM_COUNT;
                             else
                                 data_shift <= (others => '0');
                                 state      <= RECV_DATA;
@@ -229,6 +263,57 @@ begin
                             state <= ISSUE_LOAD;
                         else
                             byte_count <= byte_count + 1;
+                        end if;
+                    end if;
+
+                when RECV_STREAM_COUNT =>
+                    if rx_valid = '1' then
+                        if byte_count = 0 then
+                            stream_count_shift(15 downto 8) <= rx_byte;
+                            byte_count <= 1;
+                        else
+                            stream_count_shift(7 downto 0) <= rx_byte;
+                            stream_remaining <= to_integer(unsigned(stream_count_shift(15 downto 8) & rx_byte));
+                            byte_count <= 0;
+
+                            if unsigned(stream_count_shift(15 downto 8) & rx_byte) = 0 then
+                                state <= SEND_ACK;
+                            elsif opcode_reg = CMD_STREAM_C then
+                                host_addr_reg <= stream_addr_reg;
+                                host_cmd_valid_reg <= '1';
+                                host_cmd_write_reg <= '0';
+                                state <= ISSUE_READ_C;
+                            else
+                                state <= RECV_STREAM_DATA;
+                            end if;
+                        end if;
+                    end if;
+
+                when RECV_STREAM_DATA =>
+                    if rx_valid = '1' then
+                        host_matrix_sel_reg <= stream_matrix_sel_reg;
+                        host_addr_reg       <= stream_addr_reg;
+                        host_data_in_reg    <= (others => '0');
+                        host_data_in_reg(7 downto 0) <= rx_byte;
+                        host_cmd_valid_reg  <= '1';
+                        host_cmd_write_reg  <= '1';
+                        state <= ISSUE_STREAM_LOAD;
+                    end if;
+
+                when ISSUE_STREAM_LOAD =>
+                    host_cmd_valid_reg <= '1';
+                    host_cmd_write_reg <= '1';
+                    if host_cmd_ready = '1' then
+                        host_cmd_valid_reg <= '0';
+                        host_cmd_write_reg <= '0';
+
+                        if stream_remaining <= 1 then
+                            stream_remaining <= 0;
+                            state <= SEND_ACK;
+                        else
+                            stream_remaining <= stream_remaining - 1;
+                            stream_addr_reg <= stream_addr_reg + 1;
+                            state <= RECV_STREAM_DATA;
                         end if;
                     end if;
 
@@ -334,7 +419,15 @@ begin
                             if opcode_reg = CMD_READ_COUNTERS and counter_index < 5 then
                                 counter_index <= counter_index + 1;
                                 state         <= PREP_COUNTER;
+                            elsif opcode_reg = CMD_STREAM_C and stream_remaining > 1 then
+                                stream_remaining <= stream_remaining - 1;
+                                stream_addr_reg <= stream_addr_reg + 1;
+                                host_addr_reg <= stream_addr_reg + 1;
+                                host_cmd_valid_reg <= '1';
+                                host_cmd_write_reg <= '0';
+                                state <= ISSUE_READ_C;
                             else
+                                stream_remaining <= 0;
                                 state <= IDLE;
                             end if;
                         else

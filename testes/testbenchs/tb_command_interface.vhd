@@ -18,6 +18,8 @@ architecture sim of tb_command_interface is
 
     constant CMD_LOAD_A        : std_logic_vector(7 downto 0) := x"41";
     constant CMD_LOAD_B        : std_logic_vector(7 downto 0) := x"42";
+    constant CMD_STREAM_A      : std_logic_vector(7 downto 0) := x"61";
+    constant CMD_STREAM_C      : std_logic_vector(7 downto 0) := x"72";
     constant CMD_START         : std_logic_vector(7 downto 0) := x"53";
     constant CMD_READ_C        : std_logic_vector(7 downto 0) := x"52";
     constant CMD_READ_STATUS   : std_logic_vector(7 downto 0) := x"3F";
@@ -242,6 +244,27 @@ begin
                         MATRIX_ID_B, 6, x"FFFFFFF9", "LOAD_B");
         expect_tx_byte(tx_start, tx_byte, RESP_ACK, "LOAD_B ACK");
 
+        send_byte(rx_valid, rx_byte, CMD_STREAM_A);
+        send_word32(rx_valid, rx_byte, x"00000008");
+        send_byte(rx_valid, rx_byte, x"00");
+        send_byte(rx_valid, rx_byte, x"03");
+
+        send_byte(rx_valid, rx_byte, x"01");
+        wait_host_write(host_cmd_valid, host_cmd_write, host_cmd_ready,
+                        host_matrix_sel, host_addr, host_data_in,
+                        MATRIX_ID_A, 8, x"00000001", "STREAM_A[0]");
+
+        send_byte(rx_valid, rx_byte, x"FE");
+        wait_host_write(host_cmd_valid, host_cmd_write, host_cmd_ready,
+                        host_matrix_sel, host_addr, host_data_in,
+                        MATRIX_ID_A, 9, x"000000FE", "STREAM_A[1]");
+
+        send_byte(rx_valid, rx_byte, x"7F");
+        wait_host_write(host_cmd_valid, host_cmd_write, host_cmd_ready,
+                        host_matrix_sel, host_addr, host_data_in,
+                        MATRIX_ID_A, 10, x"0000007F", "STREAM_A[2]");
+        expect_tx_byte(tx_start, tx_byte, RESP_ACK, "STREAM_A ACK");
+
         accelerator_busy <= '0';
         host_cmd_ready <= '1';
         send_byte(rx_valid, rx_byte, CMD_START);
@@ -286,6 +309,47 @@ begin
         expect_tx_byte(tx_start, tx_byte, x"00", "READ_C byte 1");
         expect_tx_byte(tx_start, tx_byte, x"00", "READ_C byte 2");
         expect_tx_byte(tx_start, tx_byte, x"99", "READ_C byte 3");
+
+        send_byte(rx_valid, rx_byte, CMD_STREAM_C);
+        send_word32(rx_valid, rx_byte, x"0000000C");
+        send_byte(rx_valid, rx_byte, x"00");
+        send_byte(rx_valid, rx_byte, x"03");
+
+        host_data_out <= x"00000011";
+        wait_host_read(host_cmd_valid, host_cmd_write, host_cmd_ready,
+                       host_addr, 12, "STREAM_C[0]");
+        wait until rising_edge(clk);
+        host_rd_valid <= '1';
+        wait until rising_edge(clk);
+        host_rd_valid <= '0';
+        expect_tx_byte(tx_start, tx_byte, x"00", "STREAM_C[0] byte 0");
+        expect_tx_byte(tx_start, tx_byte, x"00", "STREAM_C[0] byte 1");
+        expect_tx_byte(tx_start, tx_byte, x"00", "STREAM_C[0] byte 2");
+        expect_tx_byte(tx_start, tx_byte, x"11", "STREAM_C[0] byte 3");
+
+        host_data_out <= x"FFFFFFFE";
+        wait_host_read(host_cmd_valid, host_cmd_write, host_cmd_ready,
+                       host_addr, 13, "STREAM_C[1]");
+        wait until rising_edge(clk);
+        host_rd_valid <= '1';
+        wait until rising_edge(clk);
+        host_rd_valid <= '0';
+        expect_tx_byte(tx_start, tx_byte, x"FF", "STREAM_C[1] byte 0");
+        expect_tx_byte(tx_start, tx_byte, x"FF", "STREAM_C[1] byte 1");
+        expect_tx_byte(tx_start, tx_byte, x"FF", "STREAM_C[1] byte 2");
+        expect_tx_byte(tx_start, tx_byte, x"FE", "STREAM_C[1] byte 3");
+
+        host_data_out <= x"0000007F";
+        wait_host_read(host_cmd_valid, host_cmd_write, host_cmd_ready,
+                       host_addr, 14, "STREAM_C[2]");
+        wait until rising_edge(clk);
+        host_rd_valid <= '1';
+        wait until rising_edge(clk);
+        host_rd_valid <= '0';
+        expect_tx_byte(tx_start, tx_byte, x"00", "STREAM_C[2] byte 0");
+        expect_tx_byte(tx_start, tx_byte, x"00", "STREAM_C[2] byte 1");
+        expect_tx_byte(tx_start, tx_byte, x"00", "STREAM_C[2] byte 2");
+        expect_tx_byte(tx_start, tx_byte, x"7F", "STREAM_C[2] byte 3");
 
         perf_total_cycles        <= to_unsigned(1, COUNTER_WIDTH);
         perf_load_cycles         <= to_unsigned(2, COUNTER_WIDTH);

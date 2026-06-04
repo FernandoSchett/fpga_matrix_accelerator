@@ -38,6 +38,12 @@ CSV_COLUMNS = [
     "block_memory_bits_total",
     "block_memory_bits_pct",
     "fmax_mhz",
+    "power_report_present",
+    "power_analyzer_skipped",
+    "power_total_mw",
+    "power_core_dynamic_mw",
+    "power_core_static_mw",
+    "power_io_mw",
     "exec_cycles",
     "load_cycles",
     "compute_cycles",
@@ -49,6 +55,11 @@ CSV_COLUMNS = [
     "gops_eff_approx",
     "gops_peak",
     "peak_efficiency",
+    "gops_per_watt",
+    "energy_est_j",
+    "energy_est_mj",
+    "energy_per_op_approx_nj",
+    "energy_per_op_exact_nj",
     "fmax_ratio_to_best",
     "gops_per_alm",
     "gops_per_dsp",
@@ -205,6 +216,7 @@ def base_math_metrics(config, quartus, runtime):
     num_macs = to_int(config.get("num_macs")) or 1
     fmax_mhz = to_float(quartus.get("fmax_mhz"))
     exec_cycles = to_float(runtime.get("exec_cycles"))
+    power_total_mw = to_float(quartus.get("power_total_mw"))
 
     ops_exact = (n_value**3) + (n_value**2 * (n_value - 1))
     ops_approx = 2 * (n_value**3)
@@ -214,11 +226,18 @@ def base_math_metrics(config, quartus, runtime):
     gops_eff_approx = None
     gops_peak = None
     peak_efficiency = None
+    gops_per_watt = None
+    energy_est_j = None
+    energy_est_mj = None
+    energy_per_op_approx_nj = None
+    energy_per_op_exact_nj = None
 
     if exec_cycles is None:
         warnings.append("exec_cycles ausente")
     if fmax_mhz is None:
         warnings.append("fmax_mhz ausente")
+    if power_total_mw is None:
+        warnings.append("power_total_mw ausente")
 
     if exec_cycles and fmax_mhz:
         exec_time_s = exec_cycles / (fmax_mhz * 1_000_000.0)
@@ -228,6 +247,13 @@ def base_math_metrics(config, quartus, runtime):
         gops_peak = 2.0 * num_macs * fmax_mhz / 1000.0
         if gops_peak:
             peak_efficiency = gops_eff_approx / gops_peak
+        if power_total_mw and power_total_mw > 0:
+            power_w = power_total_mw / 1000.0
+            gops_per_watt = gops_eff_approx / power_w if gops_eff_approx is not None else None
+            energy_est_j = power_w * exec_time_s
+            energy_est_mj = energy_est_j * 1000.0
+            energy_per_op_approx_nj = energy_est_j / ops_approx * 1_000_000_000.0 if ops_approx else None
+            energy_per_op_exact_nj = energy_est_j / ops_exact * 1_000_000_000.0 if ops_exact else None
 
     return {
         "ops_exact": ops_exact,
@@ -237,6 +263,11 @@ def base_math_metrics(config, quartus, runtime):
         "gops_eff_approx": gops_eff_approx,
         "gops_peak": gops_peak,
         "peak_efficiency": peak_efficiency,
+        "gops_per_watt": gops_per_watt,
+        "energy_est_j": energy_est_j,
+        "energy_est_mj": energy_est_mj,
+        "energy_per_op_approx_nj": energy_per_op_approx_nj,
+        "energy_per_op_exact_nj": energy_per_op_exact_nj,
         "_warnings": warnings,
     }
 
@@ -294,6 +325,8 @@ def resource_metrics(row, best_fmax):
         warnings.append("validacao falhou")
     if to_int(row.get("num_errors")) not in (None, 0):
         warnings.append("num_errors maior que zero")
+    if str(row.get("power_analyzer_skipped")).lower() == "true":
+        warnings.append("Power Analyzer pulado")
 
     peak_efficiency = to_float(row.get("peak_efficiency"))
     if peak_efficiency is not None and peak_efficiency > 1.05:
@@ -335,6 +368,12 @@ def normalize_quartus(parsed):
         "block_memory_bits_total",
         "block_memory_bits_pct",
         "fmax_mhz",
+        "power_report_present",
+        "power_analyzer_skipped",
+        "power_total_mw",
+        "power_core_dynamic_mw",
+        "power_core_static_mw",
+        "power_io_mw",
         "max_fanout",
         "avg_fanout",
         "top_entity",
@@ -371,6 +410,13 @@ def best_by_numeric(rows, key):
     if not valid_rows:
         return None
     return max(valid_rows, key=lambda row: to_float(row.get(key)))
+
+
+def lowest_by_numeric(rows, key):
+    valid_rows = [row for row in rows if to_float(row.get(key)) is not None]
+    if not valid_rows:
+        return None
+    return min(valid_rows, key=lambda row: to_float(row.get(key)))
 
 
 def collect_results(runs_dir, output_csv):
@@ -419,6 +465,8 @@ def collect_results(runs_dir, output_csv):
     best_exact = best_by_numeric(final_rows, "gops_eff_exact")
     best_approx = best_by_numeric(final_rows, "gops_eff_approx")
     best_eff = best_by_numeric(final_rows, "peak_efficiency")
+    best_gops_per_watt = best_by_numeric(final_rows, "gops_per_watt")
+    lowest_energy_per_op = lowest_by_numeric(final_rows, "energy_per_op_approx_nj")
     warnings = {row["run_id"]: row["warnings"] for row in final_rows if row.get("warnings")}
 
     summary = {
@@ -429,6 +477,8 @@ def collect_results(runs_dir, output_csv):
         "best_by_gops_eff_exact": best_exact.get("run_id") if best_exact else None,
         "best_by_gops_eff_approx": best_approx.get("run_id") if best_approx else None,
         "best_by_peak_efficiency": best_eff.get("run_id") if best_eff else None,
+        "best_by_gops_per_watt": best_gops_per_watt.get("run_id") if best_gops_per_watt else None,
+        "lowest_by_energy_per_op_approx_nj": lowest_energy_per_op.get("run_id") if lowest_energy_per_op else None,
         "csv": str(output_csv),
         "warnings": warnings,
     }
@@ -447,6 +497,8 @@ def collect_results(runs_dir, output_csv):
     print(f"Melhor GOPS exact: {summary['best_by_gops_eff_exact']}")
     print(f"Melhor GOPS approx: {summary['best_by_gops_eff_approx']}")
     print(f"Melhor peak efficiency: {summary['best_by_peak_efficiency']}")
+    print(f"Melhor GOPS/W: {summary['best_by_gops_per_watt']}")
+    print(f"Menor energia/op approx: {summary['lowest_by_energy_per_op_approx_nj']}")
     if warnings:
         print(f"Warnings registrados em {output_csv.parent / 'experiment_summary.json'}")
 

@@ -71,6 +71,82 @@ def max_mhz_from_fmax_tables(text):
     return max(values) if values else None
 
 
+def power_value_to_mw(value, unit):
+    number = as_number(value)
+    if number is None:
+        return None
+
+    normalized = (unit or "mW").strip().lower()
+    if normalized in {"w", "watt", "watts"}:
+        return float(number) * 1000.0
+    if normalized in {"mw", "milliwatt", "milliwatts"}:
+        return float(number)
+    if normalized in {"uw", "micro-watt", "microwatt", "microwatts"}:
+        return float(number) / 1000.0
+    return float(number)
+
+
+def first_power_mw(text, labels):
+    for label in labels:
+        escaped = re.escape(label)
+        number_pattern = r"([0-9.,]+(?:[eE][+-]?[0-9]+)?)"
+        patterns = [
+            rf"[;|]\s*{escaped}\s*[;|]\s*{number_pattern}\s*(mW|W|uW)?\s*[;|]",
+            rf"{escaped}\s*[:=]\s*{number_pattern}\s*(mW|W|uW)\b",
+            rf"{escaped}[^\n;|]*?{number_pattern}\s*(mW|W|uW)\b",
+        ]
+        for pattern in patterns:
+            regex_match = re.search(pattern, text, flags=re.IGNORECASE | re.MULTILINE)
+            if regex_match:
+                return power_value_to_mw(regex_match.group(1), regex_match.group(2))
+    return None
+
+
+def parse_power_metrics(text):
+    power_analyzer_skipped = bool(
+        re.search(r"Skipped module Power Analyzer", text, flags=re.IGNORECASE)
+    )
+    power_report_present = bool(
+        re.search(r"Power Analyzer|Thermal Power|Power Dissipation", text, flags=re.IGNORECASE)
+    )
+
+    total_mw = first_power_mw(text, [
+        "Total Thermal Power Dissipation",
+        "Total Thermal Power",
+        "Total Power Dissipation",
+        "Total Power",
+    ])
+    core_dynamic_mw = first_power_mw(text, [
+        "Core Dynamic Thermal Power Dissipation",
+        "Core Dynamic Thermal Power",
+        "Core Dynamic Power",
+        "Dynamic Thermal Power Dissipation",
+        "Dynamic Power",
+    ])
+    core_static_mw = first_power_mw(text, [
+        "Core Static Thermal Power Dissipation",
+        "Core Static Thermal Power",
+        "Core Static Power",
+        "Static Thermal Power Dissipation",
+        "Static Power",
+    ])
+    io_mw = first_power_mw(text, [
+        "I/O Thermal Power Dissipation",
+        "I/O Thermal Power",
+        "I/O Power",
+        "IO Power",
+    ])
+
+    return {
+        "power_report_present": power_report_present and not power_analyzer_skipped,
+        "power_analyzer_skipped": power_analyzer_skipped,
+        "power_total_mw": total_mw,
+        "power_core_dynamic_mw": core_dynamic_mw,
+        "power_core_static_mw": core_static_mw,
+        "power_io_mw": io_mw,
+    }
+
+
 def parse_quartus_reports(reports_dir, run_dir=None):
     reports_dir = Path(reports_dir)
     text, files = read_reports(reports_dir)
@@ -117,6 +193,7 @@ def parse_quartus_reports(reports_dir, run_dir=None):
 
     max_fanout = as_number(first_match(text, [r"Maximum Fan-Out\s*;?\s*([0-9.]+)", r"Max fanout\s*[:;]\s*([0-9.]+)"]))
     avg_fanout = as_number(first_match(text, [r"Average Fan-Out\s*;?\s*([0-9.]+)", r"Avg fanout\s*[:;]\s*([0-9.]+)"]))
+    power_metrics = parse_power_metrics(text)
 
     parsed = {
         "flow_status": flow_status,
@@ -137,6 +214,7 @@ def parse_quartus_reports(reports_dir, run_dir=None):
         "fmax_mhz": max_mhz_from_fmax_tables(text),
         "max_fanout": max_fanout,
         "avg_fanout": avg_fanout,
+        **power_metrics,
         "top_entity": top_entity,
         "device": device,
         "quartus_version": quartus_version,
@@ -155,6 +233,11 @@ def parse_quartus_reports(reports_dir, run_dir=None):
     for key in required:
         if parsed.get(key) is None:
             warnings.append(f"campo nao encontrado: {key}")
+
+    if parsed.get("power_analyzer_skipped"):
+        warnings.append("Power Analyzer foi pulado; power_total_mw/energia ficarao ausentes")
+    elif parsed.get("power_total_mw") is None:
+        warnings.append("campo nao encontrado: power_total_mw")
 
     return parsed
 

@@ -24,9 +24,23 @@ DEFAULT_METRICS = [
     "gops_eff_approx",
     "gops_eff_exact",
     "peak_efficiency",
+    "gops_per_watt",
+    "energy_per_op_approx_nj",
     "performance_per_resource_score",
     "fmax_mhz",
 ]
+
+LOWER_IS_BETTER_METRICS = {
+    "energy_est_j",
+    "energy_est_mj",
+    "energy_per_op_approx_nj",
+    "energy_per_op_exact_nj",
+    "power_total_mw",
+}
+
+
+def metric_is_lower_better(metric_key):
+    return metric_key in LOWER_IS_BETTER_METRICS
 
 
 def read_csv(path):
@@ -149,6 +163,8 @@ def best_row(rows, metric_key, eligible_only=True):
         candidates.append(row)
     if not candidates:
         return None
+    if metric_is_lower_better(metric_key):
+        return min(candidates, key=lambda row: to_float(row.get(metric_key)) or float("inf"))
     return max(candidates, key=lambda row: to_float(row.get(metric_key)) or float("-inf"))
 
 
@@ -178,6 +194,14 @@ def compact_row(row):
         "gops_eff_approx",
         "gops_peak",
         "peak_efficiency",
+        "power_total_mw",
+        "power_core_dynamic_mw",
+        "power_core_static_mw",
+        "power_io_mw",
+        "gops_per_watt",
+        "energy_est_mj",
+        "energy_per_op_approx_nj",
+        "energy_per_op_exact_nj",
         "performance_per_resource_score",
         "resource_pressure_pct",
         "routing_pressure_score",
@@ -208,6 +232,13 @@ def row_label(row, metric_key):
     )
 
 
+def format_number(value, digits=6):
+    number = to_float(value)
+    if number is None:
+        return "NA"
+    return f"{number:.{digits}g}"
+
+
 def rows_by_experiment(rows):
     grouped = {}
     for row in rows:
@@ -224,7 +255,8 @@ def top_rows(rows, metric_key, limit, eligible_only=True):
         if eligible_only and not is_eligible(row, metric_key):
             continue
         candidates.append(row)
-    return sorted(candidates, key=lambda row: to_float(row.get(metric_key)) or 0.0, reverse=True)[:limit]
+    reverse = not metric_is_lower_better(metric_key)
+    return sorted(candidates, key=lambda row: to_float(row.get(metric_key)) or 0.0, reverse=reverse)[:limit]
 
 
 def get_plotter(warnings):
@@ -290,7 +322,7 @@ def bar_best_by_experiment(rows, metric_key, filename, plots_dir, warnings):
     if not pairs:
         return None
 
-    pairs.sort(key=lambda item: item[1], reverse=True)
+    pairs.sort(key=lambda item: item[1], reverse=not metric_is_lower_better(metric_key))
     labels = [item[0] for item in pairs]
     values = [item[1] for item in pairs]
     plt.figure(figsize=(9, 5))
@@ -316,7 +348,8 @@ def bar_top_global(rows, metric_key, filename, plots_dir, warnings, limit=12):
     plt.bar(labels, values)
     plt.xticks(rotation=35, ha="right", fontsize=8)
     plt.ylabel(metric_key)
-    plt.title(f"Top global por {metric_key}")
+    prefix = "Menor" if metric_is_lower_better(metric_key) else "Top"
+    plt.title(f"{prefix} global por {metric_key}")
     return save_figure(plt, plots_dir, filename)
 
 
@@ -366,8 +399,12 @@ def heatmap_best_tile_macs(rows, metric_key, filename, plots_dir, warnings):
         if None in (tile, macs, value):
             continue
         key = (tile, macs)
-        if key not in best_by_pair or value > best_by_pair[key]:
+        if key not in best_by_pair:
             best_by_pair[key] = value
+        elif metric_is_lower_better(metric_key):
+            best_by_pair[key] = min(best_by_pair[key], value)
+        else:
+            best_by_pair[key] = max(best_by_pair[key], value)
 
     if not best_by_pair:
         return None
@@ -385,7 +422,8 @@ def heatmap_best_tile_macs(rows, metric_key, filename, plots_dir, warnings):
     plt.yticks(range(len(mac_values)), [str(int(value)) for value in mac_values])
     plt.xlabel("tile_size")
     plt.ylabel("num_macs")
-    plt.title(f"Melhor {metric_key} global por tile_size x num_macs")
+    prefix = "Menor" if metric_is_lower_better(metric_key) else "Melhor"
+    plt.title(f"{prefix} {metric_key} global por tile_size x num_macs")
     return save_figure(plt, plots_dir, filename)
 
 
@@ -398,14 +436,21 @@ def generate_plots(rows, plots_dir, warnings, top_n):
         (bar_best_by_experiment, (rows, "performance_per_resource_score", "02_bar_best_perf_resource_by_experiment", plots_dir, warnings)),
         (bar_top_global, (rows, "gops_eff_approx", "03_bar_top_global_gops_eff_approx", plots_dir, warnings, top_n)),
         (bar_top_global, (rows, "performance_per_resource_score", "04_bar_top_global_performance_resource", plots_dir, warnings, top_n)),
+        (bar_top_global, (rows, "gops_per_watt", "13_bar_top_global_gops_per_watt", plots_dir, warnings, top_n)),
+        (bar_top_global, (rows, "energy_per_op_approx_nj", "14_bar_lowest_global_energy_per_op", plots_dir, warnings, top_n)),
         (scatter_by_experiment, (rows, "fmax_mhz", "gops_eff_approx", "Fmax (MHz)", "GOPS approx", "05_scatter_fmax_vs_gops_by_experiment", plots_dir, warnings)),
         (scatter_by_experiment, (rows, "resource_pressure_pct", "gops_eff_approx", "Resource pressure (%)", "GOPS approx", "06_scatter_resource_pressure_vs_gops_by_experiment", plots_dir, warnings)),
         (scatter_by_experiment, (rows, "routing_pressure_score", "fmax_mhz", "Routing pressure score", "Fmax (MHz)", "07_scatter_routing_pressure_vs_fmax_by_experiment", plots_dir, warnings)),
         (scatter_by_experiment, (rows, "alms_pct", "gops_eff_approx", "ALMs (%)", "GOPS approx", "08_scatter_alms_pct_vs_gops_by_experiment", plots_dir, warnings)),
         (scatter_by_experiment, (rows, "dsps", "gops_eff_approx", "DSPs", "GOPS approx", "09_scatter_dsps_vs_gops_by_experiment", plots_dir, warnings)),
+        (scatter_by_experiment, (rows, "power_total_mw", "gops_eff_approx", "Power total (mW)", "GOPS approx", "15_scatter_power_vs_gops_by_experiment", plots_dir, warnings)),
+        (scatter_by_experiment, (rows, "power_total_mw", "gops_per_watt", "Power total (mW)", "GOPS/W", "16_scatter_power_vs_gops_per_watt_by_experiment", plots_dir, warnings)),
         (pareto_global, (rows, "resource_pressure_pct", "gops_eff_approx", "10_pareto_resource_pressure_vs_gops_global", plots_dir, warnings)),
         (pareto_global, (rows, "alms", "gops_eff_approx", "11_pareto_alms_vs_gops_global", plots_dir, warnings)),
+        (pareto_global, (rows, "power_total_mw", "gops_eff_approx", "17_pareto_power_vs_gops_global", plots_dir, warnings)),
         (heatmap_best_tile_macs, (rows, "gops_eff_approx", "12_heatmap_best_tile_macs_gops_global", plots_dir, warnings)),
+        (heatmap_best_tile_macs, (rows, "gops_per_watt", "18_heatmap_best_tile_macs_gops_per_watt_global", plots_dir, warnings)),
+        (heatmap_best_tile_macs, (rows, "energy_per_op_approx_nj", "19_heatmap_lowest_tile_macs_energy_per_op_global", plots_dir, warnings)),
     ]
 
     for plot_function, args in specs:
@@ -423,6 +468,7 @@ def generate_report(path, rows, summary, metric_key, top_n):
         "# Comparacao Global de Experimentos",
         "",
         "Este relatorio compara os CSVs ja gerados pelos sweeps. Ele nao executa Quartus nem ModelSim.",
+        "Energia estimada = potencia total do Quartus x tempo de execucao calculado por ciclos/Fmax.",
         "",
         "## Melhor Configuracao Global",
     ]
@@ -446,8 +492,8 @@ def generate_report(path, rows, summary, metric_key, top_n):
         "",
         f"## Top {top_n} Global por `{metric_key}`",
         "",
-        "| # | experimento | run_id | tile | macs | acc | pipe | bancos | fmax_mhz | gops_eff_approx | score recurso | risco roteamento |",
-        "|---|---|---|---:|---:|---:|---:|---|---:|---:|---:|---|",
+        "| # | experimento | run_id | tile | macs | acc | pipe | bancos | fmax_mhz | gops | power_mw | gops_w | energy_nj_op | score recurso | risco roteamento |",
+        "|---|---|---|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---|",
     ])
 
     for index, row in enumerate(top_rows(rows, metric_key, top_n, eligible_only=True), start=1):
@@ -455,8 +501,10 @@ def generate_report(path, rows, summary, metric_key, top_n):
             f"| {index} | {row.get('experiment_name')} | {row.get('run_id')} | "
             f"{row.get('tile_size')} | {row.get('num_macs')} | {row.get('acc_width')} | "
             f"{row.get('mac_pipeline_stages')} | {row.get('memory_banks_a')}/{row.get('memory_banks_b')} | "
-            f"{row.get('fmax_mhz')} | {row.get('gops_eff_approx')} | "
-            f"{row.get('performance_per_resource_score')} | {row.get('routing_risk_level')} |"
+            f"{format_number(row.get('fmax_mhz'))} | {format_number(row.get('gops_eff_approx'))} | "
+            f"{format_number(row.get('power_total_mw'))} | {format_number(row.get('gops_per_watt'))} | "
+            f"{format_number(row.get('energy_per_op_approx_nj'))} | "
+            f"{format_number(row.get('performance_per_resource_score'))} | {row.get('routing_risk_level')} |"
         )
 
     lines.extend([

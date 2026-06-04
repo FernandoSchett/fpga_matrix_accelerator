@@ -55,6 +55,14 @@ Recalcular os CSVs a partir das pastas `runs/` antes de comparar:
 python .\parameter_optimization\compare_experiments.py --refresh
 ```
 
+Para coletar consumo estimado, rode ou reexecute o sweep com Quartus. O runner gera QSF com `FLOW_ENABLE_POWER_ANALYZER ON`, entao o `quartus_sh --flow compile` tambem executa o Power Analyzer:
+
+```powershell
+.\parameter_optimization\run_experiment.ps1 -ConfigPath .\parameter_optimization\configs\01_compute_sweep.json -NoResume
+```
+
+Resultados antigos em que o log diz `Skipped module Power Analyzer` nao possuem potencia. Neles, `--refresh` so atualiza o CSV com campos vazios; para preencher `power_total_mw`, `gops_per_watt` e energia, recompile o experimento.
+
 ## Saidas
 
 Tudo fica em:
@@ -70,6 +78,13 @@ Arquivos principais:
 - `resource_speed_analysis.json`
 - `analysis_report.md`
 - `plots/*.png`
+
+Colunas principais novas:
+
+- `power_total_mw`, `power_core_dynamic_mw`, `power_core_static_mw`, `power_io_mw`: potencia estimada pelo Quartus Power Analyzer.
+- `gops_per_watt`: GOPS efetivo aproximado dividido pela potencia total em watts.
+- `energy_est_mj`: energia estimada por execucao completa da matriz, calculada como potencia total x tempo de execucao.
+- `energy_per_op_approx_nj`, `energy_per_op_exact_nj`: energia estimada por operacao.
 
 Comparacao global:
 

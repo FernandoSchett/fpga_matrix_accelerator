@@ -394,6 +394,7 @@ function New-ExperimentQsf {
         "set_global_assignment -name PROJECT_OUTPUT_DIRECTORY `"$($OutputDirectory.Replace('\', '/'))`"",
         'set_global_assignment -name NUM_PARALLEL_PROCESSORS 8',
         'set_global_assignment -name VHDL_INPUT_VERSION VHDL_2008',
+        'set_global_assignment -name FLOW_ENABLE_POWER_ANALYZER ON',
         "set_global_assignment -name SDC_FILE `"$((ConvertTo-QsfPath (Join-Path $projectRoot 'fpga_matrix_accelerator.sdc')))`""
     )
 

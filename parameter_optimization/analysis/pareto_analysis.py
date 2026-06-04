@@ -35,6 +35,7 @@ def build_pareto_sets(data, is_pandas):
         ("dsps", "gops_eff_approx"),
         ("block_memory_bits", "gops_eff_approx"),
         ("resource_pressure_pct", "gops_eff_approx"),
+        ("power_total_mw", "gops_eff_approx"),
     ]
     return {
         f"{cost}_vs_{performance}": pareto_front(rows, cost, performance)

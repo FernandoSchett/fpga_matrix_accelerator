@@ -16,6 +16,10 @@ RESOURCE_METRICS = [
     "block_memory_bits_pct",
     "pins",
     "pins_pct",
+    "power_total_mw",
+    "power_core_dynamic_mw",
+    "power_core_static_mw",
+    "power_io_mw",
     "max_fanout",
     "avg_fanout",
     "resource_pressure_pct",
@@ -30,6 +34,10 @@ PERFORMANCE_METRICS = [
     "gops_eff_approx",
     "gops_peak",
     "peak_efficiency",
+    "gops_per_watt",
+    "energy_est_mj",
+    "energy_per_op_approx_nj",
+    "energy_per_op_exact_nj",
     "performance_per_resource_score",
 ]
 

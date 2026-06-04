@@ -26,11 +26,25 @@ REQUIRED_COLUMNS = [
 ]
 
 
+LOWER_IS_BETTER = {
+    "energy_est_j",
+    "energy_est_mj",
+    "energy_per_op_approx_nj",
+    "energy_per_op_exact_nj",
+    "power_total_mw",
+}
+
+
+def metric_is_lower_better(key):
+    return key in LOWER_IS_BETTER
+
+
 def best_row(rows, key):
     valid = [row for row in rows if to_float(row.get(key)) is not None]
     if not valid:
         return None
-    return max(valid, key=lambda row: to_float(row.get(key)))
+    selector = min if metric_is_lower_better(key) else max
+    return selector(valid, key=lambda row: to_float(row.get(key)))
 
 
 def row_label(row):
@@ -39,7 +53,9 @@ def row_label(row):
     return (
         f"{row.get('run_id')} "
         f"(tile={row.get('tile_size')}, macs={row.get('num_macs')}, "
-        f"gops={to_float(row.get('gops_eff_approx'))})"
+        f"gops={to_float(row.get('gops_eff_approx'))}, "
+        f"power_mw={to_float(row.get('power_total_mw'))}, "
+        f"gops_w={to_float(row.get('gops_per_watt'))})"
     )
 
 
@@ -55,6 +71,8 @@ def generate_report(experiment_dir, rows, associations, pareto_sets, generated_p
     best_gops = best_row(rows, "gops_eff_approx")
     best_peak = best_row(rows, "peak_efficiency")
     best_perf_resource = best_row(rows, "performance_per_resource_score")
+    best_gops_per_watt = best_row(rows, "gops_per_watt")
+    best_energy_per_op = best_row(rows, "energy_per_op_approx_nj")
     routing_limited = [row for row in rows if str(row.get("likely_routing_limited")).lower() == "true"]
     top_corrs = top_associations(associations, limit=8)
 
@@ -65,6 +83,10 @@ def generate_report(experiment_dir, rows, associations, pareto_sets, generated_p
         f"- Melhor por `gops_eff_approx`: {row_label(best_gops)}",
         f"- Melhor por `peak_efficiency`: {row_label(best_peak)}",
         f"- Melhor por `performance_per_resource_score`: {row_label(best_perf_resource)}",
+        f"- Melhor por `gops_per_watt`: {row_label(best_gops_per_watt)}",
+        f"- Menor `energy_per_op_approx_nj`: {row_label(best_energy_per_op)}",
+        "",
+        "Energia estimada = potencia total do Quartus x tempo de execucao calculado por ciclos/Fmax.",
         "",
         "## Possivel Limitacao por Roteamento",
     ]

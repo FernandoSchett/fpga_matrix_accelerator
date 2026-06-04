@@ -99,6 +99,10 @@ def bar_top(rows, value_key, title, ylabel, filename, plots_dir, reverse=True, t
     return save_figure(plt, plots_dir, filename)
 
 
+def bar_bottom(rows, value_key, title, ylabel, filename, plots_dir, top_n=8):
+    return bar_top(rows, value_key, title, ylabel, filename, plots_dir, reverse=False, top_n=top_n)
+
+
 def correlation_matrix(rows, filename, plots_dir):
     metric_keys = [
         "tile_size",
@@ -109,8 +113,12 @@ def correlation_matrix(rows, filename, plots_dir):
         "resource_pressure_pct",
         "routing_pressure_score",
         "fmax_mhz",
+        "power_total_mw",
         "gops_eff_approx",
         "peak_efficiency",
+        "gops_per_watt",
+        "energy_est_mj",
+        "energy_per_op_approx_nj",
         "performance_per_resource_score",
     ]
     available = []
@@ -168,6 +176,8 @@ def generate_all_plots(data, is_pandas, plots_dir):
     specs = [
         (heatmap_plot, ("tile_size", "num_macs", "gops_eff_approx", "tile_size", "num_macs", "gops_eff_approx", "01_heatmap_tile_macs_gops")),
         (heatmap_plot, ("tile_size", "num_macs", "fmax_mhz", "tile_size", "num_macs", "fmax_mhz", "02_heatmap_tile_macs_fmax")),
+        (heatmap_plot, ("tile_size", "num_macs", "gops_per_watt", "tile_size", "num_macs", "GOPS/W", "03_heatmap_tile_macs_gops_per_watt")),
+        (heatmap_plot, ("tile_size", "num_macs", "energy_per_op_approx_nj", "tile_size", "num_macs", "energy/op approx (nJ)", "04_heatmap_tile_macs_energy_per_op")),
         (scatter_plot, ("alms_pct", "fmax_mhz", "ALMs (%)", "Fmax (MHz)", "03_scatter_alms_pct_fmax")),
         (scatter_plot, ("routing_pressure_score", "fmax_mhz", "Routing pressure score", "Fmax (MHz)", "04_scatter_routing_pressure_fmax")),
         (scatter_plot, ("dsps", "gops_eff_approx", "DSPs", "GOPS efetivo approx", "05_scatter_dsps_gops")),
@@ -176,13 +186,19 @@ def generate_all_plots(data, is_pandas, plots_dir):
         (scatter_plot, ("max_fanout", "fmax_mhz", "Max fanout", "Fmax (MHz)", "08_scatter_max_fanout_fmax")),
         (scatter_plot, ("resource_pressure_pct", "fmax_mhz", "Resource pressure (%)", "Fmax (MHz)", "09_scatter_resource_pressure_fmax")),
         (scatter_plot, ("resource_pressure_pct", "gops_eff_approx", "Resource pressure (%)", "GOPS efetivo approx", "10_scatter_resource_pressure_gops")),
+        (scatter_plot, ("power_total_mw", "gops_eff_approx", "Power total (mW)", "GOPS efetivo approx", "18_scatter_power_gops")),
+        (scatter_plot, ("power_total_mw", "gops_per_watt", "Power total (mW)", "GOPS/W", "19_scatter_power_gops_per_watt")),
+        (scatter_plot, ("num_macs", "power_total_mw", "NUM_MACS", "Power total (mW)", "20_scatter_macs_power")),
         (bar_top, ("gops_eff_approx", "Top configuracoes por GOPS approx", "GOPS approx", "11_bar_top_gops")),
         (bar_top, ("performance_per_resource_score", "Top por performance/recurso", "Score", "12_bar_top_performance_resource")),
         (bar_top, ("routing_pressure_score", "Maiores routing pressure score", "Score", "13_bar_routing_pressure")),
+        (bar_top, ("gops_per_watt", "Top configuracoes por GOPS/W", "GOPS/W", "21_bar_top_gops_per_watt")),
+        (bar_bottom, ("energy_per_op_approx_nj", "Menor energia por operacao", "nJ/op", "22_bar_lowest_energy_per_op")),
         (correlation_matrix, ("14_correlation_matrix",)),
         (pareto_plot, ("dsps", "gops_eff_approx", "DSPs", "GOPS efetivo approx", "15_pareto_dsps_gops")),
         (pareto_plot, ("block_memory_bits", "gops_eff_approx", "Block memory bits", "GOPS efetivo approx", "16_pareto_block_memory_gops")),
         (pareto_plot, ("resource_pressure_pct", "gops_eff_approx", "Resource pressure (%)", "GOPS efetivo approx", "17_pareto_resource_pressure_gops")),
+        (pareto_plot, ("power_total_mw", "gops_eff_approx", "Power total (mW)", "GOPS efetivo approx", "23_pareto_power_gops")),
     ]
 
     for plot_function, args in specs:

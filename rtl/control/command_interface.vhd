@@ -9,6 +9,7 @@ entity command_interface is
     generic (
         ADDR_WIDTH        : positive := DEFAULT_ADDR_WIDTH;
         DATA_WIDTH        : positive := DEFAULT_HOST_DATA_WIDTH;
+        CLK_FREQ_HZ       : positive := 50000000;
         COUNTER_WIDTH     : positive := 64
     );
     port (
@@ -59,6 +60,7 @@ architecture rtl of command_interface is
     constant CMD_READ_C        : std_logic_vector(7 downto 0) := x"52"; -- 'R'
     constant CMD_READ_STATUS   : std_logic_vector(7 downto 0) := x"3F"; -- '?'
     constant CMD_READ_COUNTERS : std_logic_vector(7 downto 0) := x"50"; -- 'P'
+    constant CMD_READ_TELEMETRY : std_logic_vector(7 downto 0) := x"54"; -- 'T'
 
     constant RESP_ACK : std_logic_vector(7 downto 0) := x"06";
     constant RESP_NAK : std_logic_vector(7 downto 0) := x"15";
@@ -77,6 +79,7 @@ architecture rtl of command_interface is
         WAIT_READ_C,
         PREP_STATUS,
         PREP_COUNTER,
+        PREP_TELEMETRY,
         SEND_ACK,
         SEND_NAK,
         SEND_WORD
@@ -98,7 +101,7 @@ architecture rtl of command_interface is
     signal tx_word_reg  : std_logic_vector(31 downto 0) := (others => '0');
     signal tx_index     : integer range 0 to 3 := 0;
 
-    signal counter_index   : integer range 0 to 5 := 0;
+    signal counter_index   : integer range 0 to 7 := 0;
 
     signal host_matrix_sel_reg : std_logic_vector(1 downto 0) := MATRIX_ID_A;
     signal host_addr_reg       : unsigned(ADDR_WIDTH-1 downto 0) := (others => '0');
@@ -209,6 +212,10 @@ begin
                         elsif rx_byte = CMD_READ_COUNTERS then
                             counter_index <= 0;
                             state         <= PREP_COUNTER;
+
+                        elsif rx_byte = CMD_READ_TELEMETRY then
+                            counter_index <= 0;
+                            state         <= PREP_TELEMETRY;
 
                         else
                             state <= SEND_NAK;
@@ -384,6 +391,32 @@ begin
                     tx_index <= 0;
                     state    <= SEND_WORD;
 
+                when PREP_TELEMETRY =>
+                    case counter_index is
+                        when 0 =>
+                            status_word := (others => '0');
+                            status_word(0) := accelerator_busy;
+                            status_word(1) := accelerator_done;
+                            tx_word_reg <= status_word;
+                        when 1 =>
+                            tx_word_reg <= std_logic_vector(to_unsigned(CLK_FREQ_HZ, 32));
+                        when 2 =>
+                            tx_word_reg <= low32(perf_total_cycles);
+                        when 3 =>
+                            tx_word_reg <= low32(perf_load_cycles);
+                        when 4 =>
+                            tx_word_reg <= low32(perf_compute_cycles);
+                        when 5 =>
+                            tx_word_reg <= low32(perf_store_cycles);
+                        when 6 =>
+                            tx_word_reg <= low32(perf_num_tiles_processed);
+                        when others =>
+                            tx_word_reg <= low32(perf_num_mac_ops_issued);
+                    end case;
+
+                    tx_index <= 0;
+                    state    <= SEND_WORD;
+
                 when SEND_ACK =>
                     if tx_busy = '0' then
                         tx_byte_reg  <= RESP_ACK;
@@ -419,6 +452,9 @@ begin
                             if opcode_reg = CMD_READ_COUNTERS and counter_index < 5 then
                                 counter_index <= counter_index + 1;
                                 state         <= PREP_COUNTER;
+                            elsif opcode_reg = CMD_READ_TELEMETRY and counter_index < 7 then
+                                counter_index <= counter_index + 1;
+                                state         <= PREP_TELEMETRY;
                             elsif opcode_reg = CMD_STREAM_C and stream_remaining > 1 then
                                 stream_remaining <= stream_remaining - 1;
                                 stream_addr_reg <= stream_addr_reg + 1;

@@ -24,6 +24,7 @@ architecture sim of tb_command_interface is
     constant CMD_READ_C        : std_logic_vector(7 downto 0) := x"52";
     constant CMD_READ_STATUS   : std_logic_vector(7 downto 0) := x"3F";
     constant CMD_READ_COUNTERS : std_logic_vector(7 downto 0) := x"50";
+    constant CMD_READ_TELEMETRY : std_logic_vector(7 downto 0) := x"54";
     constant RESP_ACK          : std_logic_vector(7 downto 0) := x"06";
 
     signal clk : std_logic := '0';
@@ -104,6 +105,19 @@ architecture sim of tb_command_interface is
         assert false
             report label_text & ": timeout aguardando byte UART."
             severity failure;
+    end procedure;
+
+    procedure expect_tx_word32(
+        signal start_sig : in std_logic;
+        signal byte_sig  : in std_logic_vector(7 downto 0);
+        constant expected : std_logic_vector(31 downto 0);
+        constant label_text : string
+    ) is
+    begin
+        expect_tx_byte(start_sig, byte_sig, expected(31 downto 24), label_text & " byte 0");
+        expect_tx_byte(start_sig, byte_sig, expected(23 downto 16), label_text & " byte 1");
+        expect_tx_byte(start_sig, byte_sig, expected(15 downto 8), label_text & " byte 2");
+        expect_tx_byte(start_sig, byte_sig, expected(7 downto 0), label_text & " byte 3");
     end procedure;
 
     procedure wait_host_write(
@@ -190,6 +204,7 @@ begin
         generic map (
             ADDR_WIDTH        => ADDR_WIDTH,
             DATA_WIDTH        => DATA_WIDTH,
+            CLK_FREQ_HZ       => 50000000,
             COUNTER_WIDTH     => COUNTER_WIDTH
         )
         port map (
@@ -366,6 +381,16 @@ begin
             expect_tx_byte(tx_start, tx_byte, x"00", "READ_COUNTERS byte 2");
             expect_tx_byte(tx_start, tx_byte, std_logic_vector(to_unsigned(word_idx, 8)), "READ_COUNTERS byte 3");
         end loop;
+
+        send_byte(rx_valid, rx_byte, CMD_READ_TELEMETRY);
+        expect_tx_word32(tx_start, tx_byte, x"00000001", "READ_TELEMETRY status");
+        expect_tx_word32(tx_start, tx_byte, x"02FAF080", "READ_TELEMETRY clk_freq_hz");
+        expect_tx_word32(tx_start, tx_byte, x"00000001", "READ_TELEMETRY total_cycles");
+        expect_tx_word32(tx_start, tx_byte, x"00000002", "READ_TELEMETRY load_cycles");
+        expect_tx_word32(tx_start, tx_byte, x"00000003", "READ_TELEMETRY compute_cycles");
+        expect_tx_word32(tx_start, tx_byte, x"00000004", "READ_TELEMETRY store_cycles");
+        expect_tx_word32(tx_start, tx_byte, x"00000005", "READ_TELEMETRY tiles");
+        expect_tx_word32(tx_start, tx_byte, x"00000006", "READ_TELEMETRY mac_ops");
 
         report "SIM_RESULT: PASS" severity note;
         finish;

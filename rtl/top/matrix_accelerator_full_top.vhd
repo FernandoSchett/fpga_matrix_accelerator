@@ -274,6 +274,7 @@ begin
         generic map (
             ADDR_WIDTH        => ADDR_WIDTH,
             DATA_WIDTH        => HOST_DATA_WIDTH,
+            CLK_FREQ_HZ       => CLK_FREQ_HZ,
             COUNTER_WIDTH     => 64
         )
         port map (

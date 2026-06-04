@@ -324,70 +324,53 @@ function Update-PythonEnvFile {
         New-Item -ItemType Directory -Force -Path $envDir | Out-Null
     }
 
-    $numTests = Get-DotEnvValue -Values $RootEnv -Names @("NUM_TESTS")
-    if ($null -eq $numTests) { $numTests = "1" }
-
-    $seed = Get-DotEnvValue -Values $RootEnv -Names @("SEED")
-    if ($null -eq $seed) { $seed = "123" }
-
-    $minValue = Get-DotEnvValue -Values $RootEnv -Names @("MIN_VALUE")
-    if ($null -eq $minValue) { $minValue = "-1" }
-
-    $maxValue = Get-DotEnvValue -Values $RootEnv -Names @("MAX_VALUE")
-    if ($null -eq $maxValue) { $maxValue = "1" }
-
-    $uartPort = Get-DotEnvValue -Values $RootEnv -Names @("UART_PORT")
-    if ($null -eq $uartPort) { $uartPort = "COM3" }
-
-    $uartBaudrate = Get-DotEnvValue -Values $RootEnv -Names @("UART_BAUDRATE")
-    if ($null -eq $uartBaudrate) { $uartBaudrate = "1000000" }
-
-    $uartTimeout = Get-DotEnvValue -Values $RootEnv -Names @("UART_TIMEOUT")
-    if ($null -eq $uartTimeout) { $uartTimeout = "180" }
-
-    $loadMode = Get-DotEnvValue -Values $RootEnv -Names @("LOAD_MODE")
-    if ($null -eq $loadMode) { $loadMode = "stream" }
-
-    $streamChunkElems = Get-DotEnvValue -Values $RootEnv -Names @("STREAM_CHUNK_ELEMS")
-    if ($null -eq $streamChunkElems) { $streamChunkElems = "4096" }
-
-    $streamMode = Get-DotEnvValue -Values $RootEnv -Names @("STREAM_MODE")
-    if ($null -eq $streamMode) { $streamMode = "interleaved" }
-
-    $readMode = Get-DotEnvValue -Values $RootEnv -Names @("READ_MODE")
-    if ($null -eq $readMode) { $readMode = "stream" }
-
-    $cStreamChunkElems = Get-DotEnvValue -Values $RootEnv -Names @("C_STREAM_CHUNK_ELEMS")
-    if ($null -eq $cStreamChunkElems) { $cStreamChunkElems = "4096" }
-
-    $readCounters = Get-DotEnvValue -Values $RootEnv -Names @("READ_COUNTERS")
-    if ($null -eq $readCounters) { $readCounters = "true" }
-
-    $content = @"
+    if (-not (Test-Path -LiteralPath $EnvPath)) {
+        $content = @"
 N=$N
-NUM_TESTS=$numTests
+NUM_TESTS=1
 DATA_WIDTH=$DataWidth
 ACC_WIDTH=$AccWidth
-SEED=$seed
-MIN_VALUE=$minValue
-MAX_VALUE=$maxValue
+SEED=123
+MIN_VALUE=-1
+MAX_VALUE=1
 EXAMPLE=false
 MATRIX_OUTPUT_DIR=matrix
 MATRIX_INPUT_FILE=matrix/matrix_inputs.txt
 MATRIX_EXPECTED_FILE=matrix/matrix_expected.txt
-UART_PORT=$uartPort
-UART_BAUDRATE=$uartBaudrate
-UART_TIMEOUT=$uartTimeout
-LOAD_MODE=$loadMode
-STREAM_MODE=$streamMode
-STREAM_CHUNK_ELEMS=$streamChunkElems
-READ_MODE=$readMode
-C_STREAM_CHUNK_ELEMS=$cStreamChunkElems
-READ_COUNTERS=$readCounters
+UART_PORT=COM3
+UART_BAUDRATE=1000000
+UART_TIMEOUT=300
+LOAD_MODE=stream
+STREAM_MODE=interleaved
+STREAM_CHUNK_ELEMS=4096
+READ_MODE=stream
+C_STREAM_CHUNK_ELEMS=4096
+READ_COUNTERS=true
 "@
+        Set-Content -LiteralPath $EnvPath -Value $content -Encoding UTF8
+        Write-Host "Criado .env do Python: $EnvPath"
+        return
+    }
 
-    Set-Content -LiteralPath $EnvPath -Value $content -Encoding UTF8
-    Write-Host "Atualizado .env do Python: $EnvPath"
+    $content = Get-Content -LiteralPath $EnvPath -Raw
+    foreach ($pair in @(
+        @{ Key = "N"; Value = "$N" },
+        @{ Key = "DATA_WIDTH"; Value = "$DataWidth" },
+        @{ Key = "ACC_WIDTH"; Value = "$AccWidth" }
+    )) {
+        $key = $pair.Key
+        $value = $pair.Value
+        $pattern = "(?m)^$([regex]::Escape($key))=.*$"
+
+        if ([regex]::IsMatch($content, $pattern)) {
+            $content = [regex]::Replace($content, $pattern, "$key=$value")
+        } else {
+            $content = $content.TrimEnd() + "`r`n$key=$value`r`n"
+        }
+    }
+
+    Set-Content -LiteralPath $EnvPath -Value $content.TrimEnd() -Encoding UTF8
+    Write-Host "Sincronizado .env do Python somente em N/DATA_WIDTH/ACC_WIDTH: $EnvPath"
 }
 
 $sofPath = Join-Path $ProjectDir "output_files\$ProjectName.sof"

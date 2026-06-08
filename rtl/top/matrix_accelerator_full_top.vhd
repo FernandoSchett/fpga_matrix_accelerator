@@ -146,6 +146,7 @@ architecture rtl of matrix_accelerator_full_top is
     signal dbg_heartbeat_count : natural range 0 to DBG_HEARTBEAT_TOGGLE_CYCLES-1 := 0;
     signal dbg_heartbeat_reg   : std_logic := '0';
 
+    signal dbg_uart_rx_line_seen : std_logic := '0';
     signal dbg_uart_rx_seen      : std_logic := '0';
     signal dbg_cmd_rx_seen       : std_logic := '0';
     signal dbg_cmd_tx_seen       : std_logic := '0';
@@ -381,6 +382,7 @@ begin
             dbg_heartbeat_count <= 0;
             dbg_heartbeat_reg   <= '0';
 
+            dbg_uart_rx_line_seen <= '0';
             dbg_uart_rx_seen     <= '0';
             dbg_cmd_rx_seen      <= '0';
             dbg_cmd_tx_seen      <= '0';
@@ -398,6 +400,10 @@ begin
                 dbg_heartbeat_reg <= not dbg_heartbeat_reg;
             else
                 dbg_heartbeat_count <= dbg_heartbeat_count + 1;
+            end if;
+
+            if uart_rx_i = '0' then
+                dbg_uart_rx_line_seen <= '1';
             end if;
 
             if uart_rx_valid = '1' then
@@ -443,16 +449,27 @@ begin
         end if;
     end process;
 
+    -- Debug LED map for board bring-up:
+    -- LEDR0: heartbeat/clock alive.
+    -- LEDR1: live raw UART RX low. If lit while idle, RX is inverted/stuck/incorrect.
+    -- LEDR2: raw UART RX pin went low since reset; proves electrical RX activity.
+    -- LEDR3: UART byte decoded; proves baud/CLKS_PER_BIT is plausible.
+    -- LEDR4: command byte consumed from RX FIFO.
+    -- LEDR5: CLEAR command seen; host stops at "clearing accelerator" if this/ACK path fails.
+    -- LEDR6: response byte queued by command_interface.
+    -- LEDR7: UART TX line toggled low; proves ACK/response is leaving FPGA pin.
+    -- LEDR8: host write accepted, START, busy, or done seen.
+    -- LEDR9: error latch; FIFO overflow/underflow.
     LEDR(0) <= dbg_heartbeat_reg;
-    LEDR(1) <= dbg_uart_rx_seen;
-    LEDR(2) <= dbg_cmd_rx_seen;
-    LEDR(3) <= dbg_host_wr_seen;
-    LEDR(4) <= dbg_cmd_start_seen;
-    LEDR(5) <= accel_busy;
-    LEDR(6) <= status_load_active;
-    LEDR(7) <= status_compute_active;
-    LEDR(8) <= status_store_active;
-    LEDR(9) <= dbg_done_seen;
+    LEDR(1) <= not uart_rx_i;
+    LEDR(2) <= dbg_uart_rx_line_seen;
+    LEDR(3) <= dbg_uart_rx_seen;
+    LEDR(4) <= dbg_cmd_rx_seen;
+    LEDR(5) <= dbg_cmd_clear_seen;
+    LEDR(6) <= dbg_cmd_tx_seen;
+    LEDR(7) <= dbg_uart_tx_low_seen;
+    LEDR(8) <= dbg_host_wr_seen or dbg_cmd_start_seen or accel_busy or dbg_done_seen;
+    LEDR(9) <= dbg_error_seen;
 
     u_sigma_hex : entity work.sigma_hex_display
         port map (
@@ -470,7 +487,7 @@ begin
     debug_probe_data(2) <= accel_done;
     debug_probe_data(3) <= done_seen;
     debug_probe_data(4) <= uart_rx_valid;
-    debug_probe_data(5) <= rx_fifo_full;
+    debug_probe_data(5) <= uart_rx_i;
     debug_probe_data(6) <= rx_fifo_almost_full;
     debug_probe_data(7) <= rx_fifo_overflow;
     debug_probe_data(8) <= cmd_rx_valid;

@@ -356,10 +356,20 @@ READ_COUNTERS=true
     }
 
     $content = Get-Content -LiteralPath $EnvPath -Raw
+    $uartBaudrate = [int][Math]::Round([double]$ClkFreqHz / [double]$ClksPerBit)
+    if ($ClkFreqHz -eq 50000000 -and $ClksPerBit -eq 434) {
+        $uartBaudrate = 115200
+    } elseif ($ClkFreqHz -eq 50000000 -and $ClksPerBit -eq 50) {
+        $uartBaudrate = 1000000
+    }
+
     foreach ($pair in @(
         @{ Key = "N"; Value = "$N" },
+        @{ Key = "TILE_SIZE"; Value = "$TileSize" },
+        @{ Key = "NUM_MACS"; Value = "$NumMacs" },
         @{ Key = "DATA_WIDTH"; Value = "$DataWidth" },
-        @{ Key = "ACC_WIDTH"; Value = "$AccWidth" }
+        @{ Key = "ACC_WIDTH"; Value = "$AccWidth" },
+        @{ Key = "UART_BAUDRATE"; Value = "$uartBaudrate" }
     )) {
         $key = $pair.Key
         $value = $pair.Value
@@ -373,7 +383,7 @@ READ_COUNTERS=true
     }
 
     Set-Content -LiteralPath $EnvPath -Value $content.TrimEnd() -Encoding UTF8
-    Write-Host "Sincronizado .env do Python somente em N/DATA_WIDTH/ACC_WIDTH: $EnvPath"
+    Write-Host "Sincronizado .env do Python: $EnvPath"
 }
 
 $sofPath = Join-Path $ProjectDir "output_files\$ProjectName.sof"

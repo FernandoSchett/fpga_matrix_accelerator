@@ -153,10 +153,14 @@ architecture rtl of matrix_accelerator_full_top is
     signal dbg_uart_tx_seen      : std_logic := '0';
     signal dbg_uart_tx_low_seen  : std_logic := '0';
     signal dbg_host_wr_seen      : std_logic := '0';
+    signal dbg_host_read_seen    : std_logic := '0';
+    signal dbg_host_rvalid_seen  : std_logic := '0';
     signal dbg_cmd_start_seen    : std_logic := '0';
     signal dbg_cmd_clear_seen    : std_logic := '0';
     signal dbg_done_seen         : std_logic := '0';
     signal dbg_error_seen        : std_logic := '0';
+    signal dbg_stream_c_active   : std_logic := '0';
+    signal dbg_wait_read_c       : std_logic := '0';
 
 begin
 
@@ -168,7 +172,9 @@ begin
     uart_tx_byte <= tx_byte_reg;
 
     accel_start <= cmd_start;
-    accel_rst   <= rst or cmd_clear;
+    -- Keep SDRAM/controller alive across host CLEAR commands.
+    -- CLEAR is a protocol/session reset, not a board-level memory reset.
+    accel_rst   <= rst;
 
     host_data_out <= std_logic_vector(resize(accel_data_out, HOST_DATA_WIDTH));
 
@@ -289,6 +295,10 @@ begin
             tx_byte                  => cmd_tx_byte,
             accelerator_busy         => accel_busy,
             accelerator_done         => done_seen,
+            accelerator_load_active  => status_load_active,
+            accelerator_compute_active => status_compute_active,
+            accelerator_store_active => status_store_active,
+            accelerator_error        => dbg_error_seen,
             host_cmd_valid           => host_cmd_valid,
             host_cmd_write           => host_cmd_write,
             host_cmd_ready           => host_cmd_ready,
@@ -304,7 +314,9 @@ begin
             perf_compute_cycles      => perf_compute_cycles,
             perf_store_cycles        => perf_store_cycles,
             perf_num_tiles_processed => perf_num_tiles_processed,
-            perf_num_mac_ops_issued  => perf_num_mac_ops_issued
+            perf_num_mac_ops_issued  => perf_num_mac_ops_issued,
+            debug_stream_c_active    => dbg_stream_c_active,
+            debug_wait_read_c        => dbg_wait_read_c
         );
 
     u_core : entity work.matrix_mult_sdram_tiled_core
@@ -325,6 +337,7 @@ begin
         port map (
             clk         => clk,
             rst         => accel_rst,
+            soft_clear  => cmd_clear,
             host_cmd_valid => host_cmd_valid,
             host_cmd_write => host_cmd_write,
             host_cmd_ready => host_cmd_ready,
@@ -389,6 +402,8 @@ begin
             dbg_uart_tx_seen     <= '0';
             dbg_uart_tx_low_seen <= '0';
             dbg_host_wr_seen     <= '0';
+            dbg_host_read_seen   <= '0';
+            dbg_host_rvalid_seen <= '0';
             dbg_cmd_start_seen   <= '0';
             dbg_cmd_clear_seen   <= '0';
             dbg_done_seen        <= '0';
@@ -410,6 +425,8 @@ begin
                 dbg_uart_tx_seen      <= '0';
                 dbg_uart_tx_low_seen  <= '0';
                 dbg_host_wr_seen      <= '0';
+                dbg_host_read_seen    <= '0';
+                dbg_host_rvalid_seen  <= '0';
                 dbg_cmd_start_seen    <= '0';
                 dbg_done_seen         <= '0';
                 dbg_error_seen        <= '0';
@@ -440,8 +457,16 @@ begin
                 dbg_uart_tx_low_seen <= '1';
             end if;
 
-            if host_cmd_valid = '1' and host_cmd_ready = '1' then
+            if host_cmd_valid = '1' and host_cmd_write = '1' and host_cmd_ready = '1' then
                 dbg_host_wr_seen <= '1';
+            end if;
+
+            if host_cmd_valid = '1' and host_cmd_write = '0' and host_cmd_ready = '1' then
+                dbg_host_read_seen <= '1';
+            end if;
+
+            if host_rd_valid = '1' then
+                dbg_host_rvalid_seen <= '1';
             end if;
 
             if cmd_start = '1' then
@@ -469,20 +494,20 @@ begin
     -- LEDR2: raw UART RX pin went low since reset; proves electrical RX activity.
     -- LEDR3: UART byte decoded; proves baud/CLKS_PER_BIT is plausible.
     -- LEDR4: command byte consumed from RX FIFO.
-    -- LEDR5: CLEAR command seen; host stops at "clearing accelerator" if this/ACK path fails.
-    -- LEDR6: response byte queued by command_interface.
-    -- LEDR7: UART TX line toggled low; proves ACK/response is leaving FPGA pin.
-    -- LEDR8: host write accepted, START, busy, or done seen.
-    -- LEDR9: error latch; FIFO overflow/underflow.
+    -- LEDR5: host write accepted by core/memory path.
+    -- LEDR6: load while running, STREAM_C readback after done.
+    -- LEDR7: compute while running, waiting C read data after done.
+    -- LEDR8: store while running, UART TX activity after done.
+    -- LEDR9: FIFO/protocol error latch, cleared by CLEAR or board reset.
     LEDR(0) <= dbg_heartbeat_reg;
     LEDR(1) <= not uart_rx_i;
     LEDR(2) <= dbg_uart_rx_line_seen;
     LEDR(3) <= dbg_uart_rx_seen;
     LEDR(4) <= dbg_cmd_rx_seen;
-    LEDR(5) <= dbg_cmd_clear_seen;
-    LEDR(6) <= dbg_cmd_tx_seen;
-    LEDR(7) <= dbg_uart_tx_low_seen;
-    LEDR(8) <= dbg_host_wr_seen or dbg_cmd_start_seen or accel_busy or dbg_done_seen;
+    LEDR(5) <= dbg_host_wr_seen;
+    LEDR(6) <= status_load_active or dbg_stream_c_active;
+    LEDR(7) <= status_compute_active or dbg_wait_read_c;
+    LEDR(8) <= status_store_active or dbg_uart_tx_low_seen;
     LEDR(9) <= dbg_error_seen;
 
     u_sigma_hex : entity work.sigma_hex_display

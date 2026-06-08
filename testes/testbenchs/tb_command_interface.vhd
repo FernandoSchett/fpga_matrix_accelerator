@@ -39,6 +39,10 @@ architecture sim of tb_command_interface is
 
     signal accelerator_busy : std_logic := '0';
     signal accelerator_done : std_logic := '0';
+    signal accelerator_load_active : std_logic := '0';
+    signal accelerator_compute_active : std_logic := '0';
+    signal accelerator_store_active : std_logic := '0';
+    signal accelerator_error : std_logic := '0';
 
     signal host_cmd_valid  : std_logic;
     signal host_cmd_write  : std_logic;
@@ -57,6 +61,8 @@ architecture sim of tb_command_interface is
     signal perf_store_cycles        : unsigned(COUNTER_WIDTH-1 downto 0) := (others => '0');
     signal perf_num_tiles_processed : unsigned(COUNTER_WIDTH-1 downto 0) := (others => '0');
     signal perf_num_mac_ops_issued  : unsigned(COUNTER_WIDTH-1 downto 0) := (others => '0');
+    signal debug_stream_c_active    : std_logic;
+    signal debug_wait_read_c        : std_logic;
 
     procedure send_byte(
         signal valid_sig : out std_logic;
@@ -205,7 +211,8 @@ begin
             ADDR_WIDTH        => ADDR_WIDTH,
             DATA_WIDTH        => DATA_WIDTH,
             CLK_FREQ_HZ       => 50000000,
-            COUNTER_WIDTH     => COUNTER_WIDTH
+            COUNTER_WIDTH     => COUNTER_WIDTH,
+            STREAM_C_READ_GAP_CYCLES => 0
         )
         port map (
             clk                      => clk,
@@ -218,6 +225,10 @@ begin
             tx_byte                  => tx_byte,
             accelerator_busy         => accelerator_busy,
             accelerator_done         => accelerator_done,
+            accelerator_load_active  => accelerator_load_active,
+            accelerator_compute_active => accelerator_compute_active,
+            accelerator_store_active => accelerator_store_active,
+            accelerator_error        => accelerator_error,
             host_cmd_valid           => host_cmd_valid,
             host_cmd_write           => host_cmd_write,
             host_cmd_ready           => host_cmd_ready,
@@ -233,7 +244,9 @@ begin
             perf_compute_cycles      => perf_compute_cycles,
             perf_store_cycles        => perf_store_cycles,
             perf_num_tiles_processed => perf_num_tiles_processed,
-            perf_num_mac_ops_issued  => perf_num_mac_ops_issued
+            perf_num_mac_ops_issued  => perf_num_mac_ops_issued,
+            debug_stream_c_active    => debug_stream_c_active,
+            debug_wait_read_c        => debug_wait_read_c
         );
 
     stim_proc : process
@@ -337,6 +350,7 @@ begin
         host_rd_valid <= '1';
         wait until rising_edge(clk);
         host_rd_valid <= '0';
+        expect_tx_byte(tx_start, tx_byte, RESP_ACK, "STREAM_C ACK");
         expect_tx_byte(tx_start, tx_byte, x"00", "STREAM_C[0] byte 0");
         expect_tx_byte(tx_start, tx_byte, x"00", "STREAM_C[0] byte 1");
         expect_tx_byte(tx_start, tx_byte, x"00", "STREAM_C[0] byte 2");

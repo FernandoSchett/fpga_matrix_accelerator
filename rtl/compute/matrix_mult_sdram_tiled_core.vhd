@@ -28,6 +28,7 @@ entity matrix_mult_sdram_tiled_core is
     port (
         clk : in std_logic;
         rst : in std_logic;
+        soft_clear : in std_logic;
 
         host_cmd_valid : in std_logic;
         host_cmd_write : in std_logic;
@@ -147,6 +148,7 @@ architecture rtl of matrix_mult_sdram_tiled_core is
     signal sdram_rd_valid  : std_logic;
     signal sdram_rd_data   : std_logic_vector(SDRAM_DATA_W-1 downto 0);
     signal sdram_busy      : std_logic;
+    signal core_rst        : std_logic;
 
     signal loader_busy : std_logic;
     signal writer_busy : std_logic;
@@ -235,6 +237,7 @@ begin
 
     busy <= sched_busy;
     done <= sched_done;
+    core_rst <= rst or soft_clear;
     data_out <= data_out_reg;
     rd_valid <= data_out_valid_reg;
     host_accept_ready <= '1' when host_pending = '0' and
@@ -262,7 +265,7 @@ begin
         )
         port map (
             clk => clk,
-            rst => rst,
+            rst => core_rst,
             host_valid  => host_pending,
             host_write  => host_write_reg,
             host_addr   => host_addr_reg,
@@ -331,7 +334,7 @@ begin
         )
         port map (
             clk => clk,
-            rst => rst,
+            rst => core_rst,
             start => start,
             busy  => sched_busy,
             done  => sched_done,
@@ -368,7 +371,7 @@ begin
         )
         port map (
             clk => clk,
-            rst => rst,
+            rst => core_rst,
             start => sched_loader_start,
             load_c => sched_load_c,
             tile_i => sched_tile_i,
@@ -412,7 +415,7 @@ begin
         )
         port map (
             clk => clk,
-            rst => rst,
+            rst => core_rst,
             start => sched_writer_start,
             tile_i => sched_tile_i,
             tile_j => sched_tile_j,
@@ -492,7 +495,7 @@ begin
         )
         port map (
             clk => clk,
-            rst => rst,
+            rst => core_rst,
             start => core_start,
             done => core_done,
             a_tile => core_a_tile,
@@ -502,9 +505,9 @@ begin
             mac_ops_issued => core_mac_ops_issued
         );
 
-    process(clk, rst)
+    process(clk, core_rst)
     begin
-        if rst = '1' then
+        if core_rst = '1' then
             host_pending   <= '0';
             host_write_reg <= '0';
             host_addr_reg  <= (others => '0');
@@ -561,13 +564,13 @@ begin
         end if;
     end process;
 
-    process(clk, rst)
+    process(clk, core_rst)
         variable lr : natural;
         variable lc : natural;
         variable left_data : natural;
         variable left_acc  : natural;
     begin
-        if rst = '1' then
+        if core_rst = '1' then
             compute_state <= COMPUTE_IDLE;
             pack_idx <= 0;
             unpack_idx <= 0;

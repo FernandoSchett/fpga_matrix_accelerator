@@ -107,13 +107,8 @@ begin
             overflow_reg  <= '0';
             underflow_reg <= '0';
         elsif rising_edge(clk) then
-            if wr_en = '1' and fifo_full = '1' then
-                overflow_reg <= '1';
-            end if;
-
-            if rd_en = '1' and fifo_empty = '1' then
-                underflow_reg <= '1';
-            end if;
+            overflow_reg  <= wr_en and fifo_full;
+            underflow_reg <= rd_en and fifo_empty;
         end if;
     end process;
 

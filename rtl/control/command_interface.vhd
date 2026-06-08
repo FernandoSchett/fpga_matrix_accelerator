@@ -10,7 +10,8 @@ entity command_interface is
         ADDR_WIDTH        : positive := DEFAULT_ADDR_WIDTH;
         DATA_WIDTH        : positive := DEFAULT_HOST_DATA_WIDTH;
         CLK_FREQ_HZ       : positive := 50000000;
-        COUNTER_WIDTH     : positive := 64
+        COUNTER_WIDTH     : positive := 64;
+        STREAM_C_READ_GAP_CYCLES : natural := 1024
     );
     port (
         clk : in std_logic;
@@ -26,6 +27,10 @@ entity command_interface is
 
         accelerator_busy : in std_logic;
         accelerator_done : in std_logic;
+        accelerator_load_active : in std_logic;
+        accelerator_compute_active : in std_logic;
+        accelerator_store_active : in std_logic;
+        accelerator_error : in std_logic;
 
         host_cmd_valid  : out std_logic;
         host_cmd_write  : out std_logic;
@@ -44,7 +49,10 @@ entity command_interface is
         perf_compute_cycles      : in unsigned(COUNTER_WIDTH-1 downto 0);
         perf_store_cycles        : in unsigned(COUNTER_WIDTH-1 downto 0);
         perf_num_tiles_processed : in unsigned(COUNTER_WIDTH-1 downto 0);
-        perf_num_mac_ops_issued  : in unsigned(COUNTER_WIDTH-1 downto 0)
+        perf_num_mac_ops_issued  : in unsigned(COUNTER_WIDTH-1 downto 0);
+
+        debug_stream_c_active : out std_logic;
+        debug_wait_read_c     : out std_logic
     );
 end entity command_interface;
 
@@ -82,6 +90,7 @@ architecture rtl of command_interface is
         PREP_TELEMETRY,
         SEND_ACK,
         SEND_STREAM_C_ACK,
+        STREAM_C_READ_GAP,
         SEND_NAK,
         SEND_WORD
     );
@@ -96,6 +105,8 @@ architecture rtl of command_interface is
     signal stream_remaining : natural range 0 to 65535 := 0;
     signal stream_addr_reg  : unsigned(ADDR_WIDTH-1 downto 0) := (others => '0');
     signal stream_matrix_sel_reg : std_logic_vector(1 downto 0) := MATRIX_ID_A;
+    signal stream_ack_pending : std_logic := '0';
+    signal stream_gap_counter : natural range 0 to STREAM_C_READ_GAP_CYCLES := 0;
 
     signal tx_start_reg : std_logic := '0';
     signal tx_byte_reg  : std_logic_vector(7 downto 0) := (others => '0');
@@ -137,6 +148,9 @@ begin
     start           <= start_reg;
     clear           <= clear_reg;
 
+    debug_stream_c_active <= '1' when opcode_reg = CMD_STREAM_C and state /= IDLE else '0';
+    debug_wait_read_c     <= '1' when state = WAIT_READ_C else '0';
+
     rx_ready <= '1' when state = IDLE or
                          state = RECV_ADDR or
                          state = RECV_DATA or
@@ -159,6 +173,8 @@ begin
             stream_remaining    <= 0;
             stream_addr_reg     <= (others => '0');
             stream_matrix_sel_reg <= MATRIX_ID_A;
+            stream_ack_pending  <= '0';
+            stream_gap_counter  <= 0;
             tx_start_reg        <= '0';
             tx_byte_reg         <= (others => '0');
             tx_word_reg         <= (others => '0');
@@ -287,7 +303,11 @@ begin
                             if unsigned(stream_count_shift(15 downto 8) & rx_byte) = 0 then
                                 state <= SEND_ACK;
                             elsif opcode_reg = CMD_STREAM_C then
-                                state <= SEND_STREAM_C_ACK;
+                                stream_ack_pending <= '1';
+                                host_addr_reg <= stream_addr_reg;
+                                host_cmd_valid_reg <= '1';
+                                host_cmd_write_reg <= '0';
+                                state <= ISSUE_READ_C;
                             else
                                 state <= RECV_STREAM_DATA;
                             end if;
@@ -359,13 +379,21 @@ begin
                     if host_rd_valid = '1' then
                         tx_word_reg <= std_logic_vector(resize(unsigned(host_data_out), 32));
                         tx_index    <= 0;
-                        state       <= SEND_WORD;
+                        if opcode_reg = CMD_STREAM_C and stream_ack_pending = '1' then
+                            state <= SEND_STREAM_C_ACK;
+                        else
+                            state <= SEND_WORD;
+                        end if;
                     end if;
 
                 when PREP_STATUS =>
                     status_word := (others => '0');
                     status_word(0) := accelerator_busy;
                     status_word(1) := accelerator_done;
+                    status_word(2) := accelerator_load_active;
+                    status_word(3) := accelerator_compute_active;
+                    status_word(4) := accelerator_store_active;
+                    status_word(5) := accelerator_error;
                     tx_word_reg <= status_word;
                     tx_index    <= 0;
                     state       <= SEND_WORD;
@@ -395,6 +423,10 @@ begin
                             status_word := (others => '0');
                             status_word(0) := accelerator_busy;
                             status_word(1) := accelerator_done;
+                            status_word(2) := accelerator_load_active;
+                            status_word(3) := accelerator_compute_active;
+                            status_word(4) := accelerator_store_active;
+                            status_word(5) := accelerator_error;
                             tx_word_reg <= status_word;
                         when 1 =>
                             tx_word_reg <= std_logic_vector(to_unsigned(CLK_FREQ_HZ, 32));
@@ -426,10 +458,19 @@ begin
                     if tx_busy = '0' then
                         tx_byte_reg  <= RESP_ACK;
                         tx_start_reg <= '1';
+                        stream_ack_pending <= '0';
+                        state <= SEND_WORD;
+                    end if;
+
+                when STREAM_C_READ_GAP =>
+                    if stream_gap_counter = STREAM_C_READ_GAP_CYCLES then
+                        stream_gap_counter <= 0;
                         host_addr_reg <= stream_addr_reg;
                         host_cmd_valid_reg <= '1';
                         host_cmd_write_reg <= '0';
                         state <= ISSUE_READ_C;
+                    else
+                        stream_gap_counter <= stream_gap_counter + 1;
                     end if;
 
                 when SEND_NAK =>
@@ -466,10 +507,8 @@ begin
                             elsif opcode_reg = CMD_STREAM_C and stream_remaining > 1 then
                                 stream_remaining <= stream_remaining - 1;
                                 stream_addr_reg <= stream_addr_reg + 1;
-                                host_addr_reg <= stream_addr_reg + 1;
-                                host_cmd_valid_reg <= '1';
-                                host_cmd_write_reg <= '0';
-                                state <= ISSUE_READ_C;
+                                stream_gap_counter <= 0;
+                                state <= STREAM_C_READ_GAP;
                             else
                                 stream_remaining <= 0;
                                 state <= IDLE;

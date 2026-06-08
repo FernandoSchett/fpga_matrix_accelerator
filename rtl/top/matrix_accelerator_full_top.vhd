@@ -402,6 +402,20 @@ begin
                 dbg_heartbeat_count <= dbg_heartbeat_count + 1;
             end if;
 
+            if cmd_clear = '1' then
+                dbg_uart_rx_line_seen <= '0';
+                dbg_uart_rx_seen      <= '0';
+                dbg_cmd_rx_seen       <= '0';
+                dbg_cmd_tx_seen       <= '0';
+                dbg_uart_tx_seen      <= '0';
+                dbg_uart_tx_low_seen  <= '0';
+                dbg_host_wr_seen      <= '0';
+                dbg_cmd_start_seen    <= '0';
+                dbg_done_seen         <= '0';
+                dbg_error_seen        <= '0';
+                dbg_cmd_clear_seen    <= '1';
+            end if;
+
             if uart_rx_i = '0' then
                 dbg_uart_rx_line_seen <= '1';
             end if;
@@ -426,7 +440,7 @@ begin
                 dbg_uart_tx_low_seen <= '1';
             end if;
 
-            if host_cmd_valid = '1' and host_cmd_write = '1' and host_cmd_ready = '1' then
+            if host_cmd_valid = '1' and host_cmd_ready = '1' then
                 dbg_host_wr_seen <= '1';
             end if;
 

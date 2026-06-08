@@ -23,7 +23,8 @@ entity tb_matrix_accelerator_full_top_uart_protocol is
         CLKS_PER_BIT        : positive := 8;
         CLK_FREQ_HZ         : positive := 1000;
         UART_FIFO_DEPTH     : positive := 64;
-        MAX_STATUS_POLLS    : positive := 5000
+        MAX_STATUS_POLLS    : positive := 5000;
+        NUM_TESTS           : positive := 3
     );
 end entity tb_matrix_accelerator_full_top_uart_protocol;
 
@@ -36,6 +37,7 @@ architecture sim of tb_matrix_accelerator_full_top_uart_protocol is
     constant CMD_STREAM_A      : std_logic_vector(7 downto 0) := x"61"; -- 'a'
     constant CMD_STREAM_B      : std_logic_vector(7 downto 0) := x"62"; -- 'b'
     constant CMD_STREAM_C      : std_logic_vector(7 downto 0) := x"72"; -- 'r'
+    constant CMD_CLEAR         : std_logic_vector(7 downto 0) := x"43"; -- 'C'
     constant CMD_START         : std_logic_vector(7 downto 0) := x"53"; -- 'S'
     constant CMD_READ_STATUS   : std_logic_vector(7 downto 0) := x"3F"; -- '?'
     constant CMD_READ_C        : std_logic_vector(7 downto 0) := x"52"; -- 'R'
@@ -371,98 +373,101 @@ begin
         uart_send_byte(uart_rx_i, x"00");
         uart_expect_byte(uart_tx_o, RESP_NAK, "Comando invalido deveria retornar NAK");
 
-        report "SIM: carregando matriz A via UART streaming" severity note;
-        uart_stream_matrix_i8(uart_rx_i, uart_tx_o, CMD_STREAM_A, true);
+        for test_idx in 0 to NUM_TESTS - 1 loop
+            report "SIM: TEST " & integer'image(test_idx) & " CLEAR" severity note;
+            uart_send_byte(uart_rx_i, CMD_CLEAR);
+            uart_expect_byte(uart_tx_o, RESP_ACK, "CLEAR deveria retornar ACK");
 
-        report "SIM: carregando matriz B via UART streaming" severity note;
-        uart_stream_matrix_i8(uart_rx_i, uart_tx_o, CMD_STREAM_B, false);
+            report "SIM: TEST " & integer'image(test_idx) & " carregando matriz A via UART streaming" severity note;
+            uart_stream_matrix_i8(uart_rx_i, uart_tx_o, CMD_STREAM_A, true);
 
-        report "SIM: enviando START via UART" severity note;
+            report "SIM: TEST " & integer'image(test_idx) & " carregando matriz B via UART streaming" severity note;
+            uart_stream_matrix_i8(uart_rx_i, uart_tx_o, CMD_STREAM_B, false);
 
-        uart_send_byte(uart_rx_i, CMD_START);
-        uart_expect_byte(uart_tx_o, RESP_ACK, "START deveria retornar ACK");
+            report "SIM: TEST " & integer'image(test_idx) & " enviando START via UART" severity note;
 
-        report "SIM: aguardando done por READ_STATUS" severity note;
+            uart_send_byte(uart_rx_i, CMD_START);
+            uart_expect_byte(uart_tx_o, RESP_ACK, "START deveria retornar ACK");
 
-        done_seen := false;
+            report "SIM: TEST " & integer'image(test_idx) & " aguardando done por READ_STATUS" severity note;
 
-        for poll_idx in 0 to MAX_STATUS_POLLS loop
-            uart_send_byte(uart_rx_i, CMD_READ_STATUS);
-            uart_read_word_be(uart_tx_o, status_word);
+            done_seen := false;
 
-            if status_word(STATUS_DONE_BIT) = '1' then
-                done_seen := true;
-                exit;
-            end if;
+            for poll_idx in 0 to MAX_STATUS_POLLS loop
+                uart_send_byte(uart_rx_i, CMD_READ_STATUS);
+                uart_read_word_be(uart_tx_o, status_word);
 
-            wait_cycles(50);
-        end loop;
+                if status_word(STATUS_DONE_BIT) = '1' then
+                    done_seen := true;
+                    exit;
+                end if;
 
-        assert done_seen
-            report "Acelerador nao sinalizou done via READ_STATUS."
-            severity failure;
-
-        assert LEDR(3) = '1' or LEDR(7) = '1' or LEDR(8) = '1'
-            report "Done ocorreu via status, mas nenhum LED esperado de done/progresso acendeu."
-            severity warning;
-
-        report "SIM: lendo matriz C via UART streaming e comparando resultado" severity note;
-
-        addr := 0;
-        while addr < N * N loop
-            chunk_count := N * N - addr;
-            if chunk_count > STREAM_C_CHUNK_ELEMS then
-                chunk_count := STREAM_C_CHUNK_ELEMS;
-            end if;
-
-            count_word := std_logic_vector(to_unsigned(chunk_count, 16));
-            uart_send_byte(uart_rx_i, CMD_STREAM_C);
-            uart_send_word_be(uart_rx_i, std_logic_vector(to_unsigned(addr, 32)));
-            uart_send_byte(uart_rx_i, count_word(15 downto 8));
-            uart_send_byte(uart_rx_i, count_word(7 downto 0));
-
-            for chunk_offset in 0 to chunk_count - 1 loop
-                uart_read_word_be(uart_tx_o, result_word);
-
-                linear_addr := addr + chunk_offset;
-                row_calc := linear_addr / N;
-                col_calc := linear_addr mod N;
-                got_int := to_integer(signed(result_word));
-                exp_int := expected_c_value(row_calc, col_calc);
-
-                assert got_int = exp_int
-                    report "Resultado C incorreto em addr=" &
-                           integer'image(linear_addr) &
-                           " row=" & integer'image(row_calc) &
-                           " col=" & integer'image(col_calc) &
-                           ". Esperado=" & integer'image(exp_int) &
-                           " recebido=" & integer'image(got_int)
-                    severity failure;
+                wait_cycles(50);
             end loop;
 
-            addr := addr + chunk_count;
-        end loop;
+            assert done_seen
+                report "Acelerador nao sinalizou done via READ_STATUS."
+                severity failure;
 
-        report "SIM: lendo contadores de performance" severity note;
+            report "SIM: TEST " & integer'image(test_idx) & " lendo matriz C via UART streaming" severity note;
 
-        uart_send_byte(uart_rx_i, CMD_READ_COUNTERS);
+            addr := 0;
+            while addr < N * N loop
+                chunk_count := N * N - addr;
+                if chunk_count > STREAM_C_CHUNK_ELEMS then
+                    chunk_count := STREAM_C_CHUNK_ELEMS;
+                end if;
 
-        for counter_idx in 0 to 5 loop
-            uart_read_word_be(uart_tx_o, counter_word);
+                count_word := std_logic_vector(to_unsigned(chunk_count, 16));
+                uart_send_byte(uart_rx_i, CMD_STREAM_C);
+                uart_send_word_be(uart_rx_i, std_logic_vector(to_unsigned(addr, 32)));
+                uart_send_byte(uart_rx_i, count_word(15 downto 8));
+                uart_send_byte(uart_rx_i, count_word(7 downto 0));
+                uart_expect_byte(uart_tx_o, RESP_ACK, "STREAM_C deveria retornar ACK antes dos dados");
 
-            if counter_idx = 0 then
-                assert unsigned(counter_word) > 0
-                    report "perf_total_cycles deveria ser maior que zero."
-                    severity warning;
-            elsif counter_idx = 2 then
-                assert unsigned(counter_word) > 0
-                    report "perf_compute_cycles deveria ser maior que zero."
-                    severity warning;
-            elsif counter_idx = 4 then
-                assert unsigned(counter_word) > 0
-                    report "perf_num_tiles_processed deveria ser maior que zero."
-                    severity warning;
-            end if;
+                for chunk_offset in 0 to chunk_count - 1 loop
+                    uart_read_word_be(uart_tx_o, result_word);
+
+                    linear_addr := addr + chunk_offset;
+                    row_calc := linear_addr / N;
+                    col_calc := linear_addr mod N;
+                    got_int := to_integer(signed(result_word));
+                    exp_int := expected_c_value(row_calc, col_calc);
+
+                    assert got_int = exp_int
+                        report "Resultado C incorreto em addr=" &
+                               integer'image(linear_addr) &
+                               " row=" & integer'image(row_calc) &
+                               " col=" & integer'image(col_calc) &
+                               ". Esperado=" & integer'image(exp_int) &
+                               " recebido=" & integer'image(got_int)
+                        severity failure;
+                end loop;
+
+                addr := addr + chunk_count;
+            end loop;
+
+            report "SIM: TEST " & integer'image(test_idx) & " lendo contadores de performance" severity note;
+
+            uart_send_byte(uart_rx_i, CMD_READ_COUNTERS);
+
+            for counter_idx in 0 to 5 loop
+                uart_read_word_be(uart_tx_o, counter_word);
+
+                if counter_idx = 0 then
+                    assert unsigned(counter_word) > 0
+                        report "perf_total_cycles deveria ser maior que zero."
+                        severity warning;
+                elsif counter_idx = 2 then
+                    assert unsigned(counter_word) > 0
+                        report "perf_compute_cycles deveria ser maior que zero."
+                        severity warning;
+                elsif counter_idx = 4 then
+                    assert unsigned(counter_word) > 0
+                        report "perf_num_tiles_processed deveria ser maior que zero."
+                        severity warning;
+                end if;
+            end loop;
         end loop;
 
         report "SIM_RESULT: PASS - UART generico STREAM_A/STREAM_B/START/STREAM_C funcionando" severity note;

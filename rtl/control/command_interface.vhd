@@ -81,6 +81,7 @@ architecture rtl of command_interface is
         PREP_COUNTER,
         PREP_TELEMETRY,
         SEND_ACK,
+        SEND_STREAM_C_ACK,
         SEND_NAK,
         SEND_WORD
     );
@@ -286,10 +287,7 @@ begin
                             if unsigned(stream_count_shift(15 downto 8) & rx_byte) = 0 then
                                 state <= SEND_ACK;
                             elsif opcode_reg = CMD_STREAM_C then
-                                host_addr_reg <= stream_addr_reg;
-                                host_cmd_valid_reg <= '1';
-                                host_cmd_write_reg <= '0';
-                                state <= ISSUE_READ_C;
+                                state <= SEND_STREAM_C_ACK;
                             else
                                 state <= RECV_STREAM_DATA;
                             end if;
@@ -422,6 +420,16 @@ begin
                         tx_byte_reg  <= RESP_ACK;
                         tx_start_reg <= '1';
                         state        <= IDLE;
+                    end if;
+
+                when SEND_STREAM_C_ACK =>
+                    if tx_busy = '0' then
+                        tx_byte_reg  <= RESP_ACK;
+                        tx_start_reg <= '1';
+                        host_addr_reg <= stream_addr_reg;
+                        host_cmd_valid_reg <= '1';
+                        host_cmd_write_reg <= '0';
+                        state <= ISSUE_READ_C;
                     end if;
 
                 when SEND_NAK =>

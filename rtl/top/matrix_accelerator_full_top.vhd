@@ -130,6 +130,7 @@ architecture rtl of matrix_accelerator_full_top is
     signal status_compute_active : std_logic;
     signal status_store_active   : std_logic;
     signal status_tile_done      : std_logic;
+    signal status_memory_error   : std_logic;
 
     signal debug_probe_data   : std_logic_vector(127 downto 0) := (others => '0');
     signal debug_trigger_data : std_logic_vector(7 downto 0) := (others => '0');
@@ -161,6 +162,7 @@ architecture rtl of matrix_accelerator_full_top is
     signal dbg_error_seen        : std_logic := '0';
     signal dbg_stream_c_active   : std_logic := '0';
     signal dbg_wait_read_c       : std_logic := '0';
+    signal system_error          : std_logic;
 
 begin
 
@@ -177,6 +179,7 @@ begin
     accel_rst   <= rst;
 
     host_data_out <= std_logic_vector(resize(accel_data_out, HOST_DATA_WIDTH));
+    system_error <= dbg_error_seen or status_memory_error;
 
     rx_fifo_rd_en <= cmd_rx_ready and not rx_fifo_empty;
     cmd_rx_valid  <= rx_fifo_rd_en;
@@ -298,7 +301,7 @@ begin
             accelerator_load_active  => status_load_active,
             accelerator_compute_active => status_compute_active,
             accelerator_store_active => status_store_active,
-            accelerator_error        => dbg_error_seen,
+            accelerator_error        => system_error,
             host_cmd_valid           => host_cmd_valid,
             host_cmd_write           => host_cmd_write,
             host_cmd_ready           => host_cmd_ready,
@@ -354,6 +357,7 @@ begin
             store_active   => status_store_active,
             tile_done      => status_tile_done,
             mac_ops_issued => mac_ops_issued,
+            memory_error   => status_memory_error,
             dram_addr  => DRAM_ADDR,
             dram_ba    => DRAM_BA,
             dram_cas_n => DRAM_CAS_N,
@@ -481,7 +485,7 @@ begin
                 dbg_done_seen <= '1';
             end if;
 
-            if rx_fifo_overflow = '1' or rx_fifo_underflow = '1' or
+            if status_memory_error = '1' or rx_fifo_overflow = '1' or rx_fifo_underflow = '1' or
             tx_fifo_overflow = '1' or tx_fifo_underflow = '1' then
                 dbg_error_seen <= '1';
             end if;

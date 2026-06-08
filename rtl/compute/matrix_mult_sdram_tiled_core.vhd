@@ -23,7 +23,8 @@ entity matrix_mult_sdram_tiled_core is
         BASE_A_BYTES        : natural := 0;
         BASE_B_BYTES        : natural := 0;
         BASE_C_BYTES        : natural := 0;
-        MAC_PIPELINE_STAGES : natural := 0
+        MAC_PIPELINE_STAGES : natural := 0;
+        SDRAM_READ_TIMEOUT_CYCLES : natural := 100000
     );
     port (
         clk : in std_logic;
@@ -49,6 +50,7 @@ entity matrix_mult_sdram_tiled_core is
         store_active   : out std_logic;
         tile_done      : out std_logic;
         mac_ops_issued : out unsigned(63 downto 0);
+        memory_error   : out std_logic;
 
         dram_addr  : out std_logic_vector(12 downto 0);
         dram_ba    : out std_logic_vector(1 downto 0);
@@ -148,6 +150,7 @@ architecture rtl of matrix_mult_sdram_tiled_core is
     signal sdram_rd_valid  : std_logic;
     signal sdram_rd_data   : std_logic_vector(SDRAM_DATA_W-1 downto 0);
     signal sdram_busy      : std_logic;
+    signal sdram_error     : std_logic;
     signal core_rst        : std_logic;
 
     signal loader_busy : std_logic;
@@ -247,6 +250,7 @@ begin
                          else '0';
     host_cmd_ready <= host_accept_ready;
     mac_ops_issued <= resize(core_mac_ops_issued, mac_ops_issued'length);
+    memory_error <= sdram_error;
     a_rd_data <= a_rd_data_bank(compute_panel_idx);
     b_rd_data <= b_rd_data_bank(compute_panel_idx);
 
@@ -299,7 +303,8 @@ begin
             ADDR_WIDTH     => SDRAM_ADDR_W,
             DATA_WIDTH     => SDRAM_DATA_W,
             EMULATED_WORDS => EMULATED_WORDS,
-            SIMULATION_MODEL => SDRAM_SIMULATION_MODEL
+            SIMULATION_MODEL => SDRAM_SIMULATION_MODEL,
+            READ_TIMEOUT_CYCLES => SDRAM_READ_TIMEOUT_CYCLES
         )
         port map (
             clk => clk,
@@ -313,6 +318,7 @@ begin
             rd_valid  => sdram_rd_valid,
             rd_data   => sdram_rd_data,
             busy      => sdram_busy,
+            error     => sdram_error,
             dram_addr  => dram_addr,
             dram_ba    => dram_ba,
             dram_cas_n => dram_cas_n,

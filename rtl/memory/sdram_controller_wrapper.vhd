@@ -7,7 +7,8 @@ entity sdram_controller_wrapper is
         ADDR_WIDTH       : positive := 26;
         DATA_WIDTH       : positive := 32;
         EMULATED_WORDS   : positive := 32768;
-        SIMULATION_MODEL : boolean := true
+        SIMULATION_MODEL : boolean := true;
+        READ_TIMEOUT_CYCLES : natural := 100000
     );
     port (
         clk : in std_logic;
@@ -23,6 +24,7 @@ entity sdram_controller_wrapper is
         rd_valid : out std_logic;
         rd_data  : out std_logic_vector(DATA_WIDTH-1 downto 0);
         busy     : out std_logic;
+        error    : out std_logic;
 
         dram_addr  : out std_logic_vector(12 downto 0);
         dram_ba    : out std_logic_vector(1 downto 0);
@@ -73,6 +75,7 @@ begin
         rd_valid  <= rd_valid_reg;
         rd_data   <= rd_data_reg;
         busy      <= '0';
+        error     <= '0';
 
         dram_addr  <= (others => '0');
         dram_ba    <= (others => '0');
@@ -197,6 +200,8 @@ begin
         signal read_low_half : std_logic_vector(15 downto 0) := (others => '0');
         signal rd_valid_reg  : std_logic := '0';
         signal rd_data_reg   : std_logic_vector(DATA_WIDTH-1 downto 0) := (others => '0');
+        signal error_reg     : std_logic := '0';
+        signal read_timeout_counter : natural range 0 to READ_TIMEOUT_CYCLES := 0;
 
         signal ip_addr        : std_logic_vector(ADDR_WIDTH-2 downto 0) := (others => '0');
         signal ip_be_n        : std_logic_vector(1 downto 0) := (others => '1');
@@ -299,6 +304,7 @@ begin
         rd_valid  <= rd_valid_reg;
         rd_data   <= rd_data_reg;
         busy      <= '1' when state /= IDLE or ip_waitrequest = '1' else '0';
+        error     <= error_reg;
 
         dram_clk  <= clk;
         dram_ldqm <= ip_dqm(0);
@@ -349,12 +355,15 @@ begin
                 read_low_half <= (others => '0');
                 rd_valid_reg  <= '0';
                 rd_data_reg   <= (others => '0');
+                error_reg     <= '0';
+                read_timeout_counter <= 0;
 
             elsif rising_edge(clk) then
                 rd_valid_reg <= '0';
 
                 case state is
                     when IDLE =>
+                        read_timeout_counter <= 0;
                         if cmd_valid = '1' and ip_waitrequest = '0' then
                             cmd_write_reg <= cmd_write;
                             cmd_addr_reg  <= cmd_addr;
@@ -383,6 +392,7 @@ begin
                         end if;
 
                     when ISSUE_HALF =>
+                        read_timeout_counter <= 0;
                         if ip_waitrequest = '0' then
                             if cmd_write_reg = '1' then
                                 if half_step = 0 and half_count = 2 then
@@ -397,6 +407,7 @@ begin
 
                     when WAIT_READ_DATA =>
                         if ip_valid = '1' then
+                            read_timeout_counter <= 0;
                             if half_step = 0 and half_count = 2 then
                                 read_low_half <= ip_rdata;
                                 half_step <= 1;
@@ -410,6 +421,14 @@ begin
                                 rd_valid_reg <= '1';
                                 state <= IDLE;
                             end if;
+                        elsif read_timeout_counter = READ_TIMEOUT_CYCLES then
+                            rd_data_reg <= x"DEAD0001";
+                            rd_valid_reg <= '1';
+                            error_reg <= '1';
+                            read_timeout_counter <= 0;
+                            state <= IDLE;
+                        else
+                            read_timeout_counter <= read_timeout_counter + 1;
                         end if;
                 end case;
             end if;

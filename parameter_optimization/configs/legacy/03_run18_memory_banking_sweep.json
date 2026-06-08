@@ -5,7 +5,7 @@
     "N": 128,
     "DATA_WIDTH": 8,
     "ACC_WIDTH": 32,
-    "MEM_TYPE": "internal_fpga_ram",
+    "MEM_TYPE": "external_sdram",
     "DATAFLOW": "output_stationary",
     "BUFFERING_MODE": "single",
     "MEMORY_BURST_LEN": null,
@@ -14,23 +14,19 @@
     "MAC_PIPELINE_STAGES": 0,
     "MEMORY_BANKS_A": 1,
     "MEMORY_BANKS_B": 1,
+    "SDRAM_ADDR_W": 26,
+    "SDRAM_DATA_W": 32,
+    "SDRAM_SIMULATION_MODEL": false,
+    "ACCUMULATE_C": false,
     "TOP_ENTITY": "matrix_accelerator_full_top"
   },
   "sweep": [
     { "MEMORY_BANKS_A": 1, "MEMORY_BANKS_B": 1, "BUFFERING_MODE": "single" },
-    { "MEMORY_BANKS_A": 2, "MEMORY_BANKS_B": 1, "BUFFERING_MODE": "single" },
-    { "MEMORY_BANKS_A": 1, "MEMORY_BANKS_B": 2, "BUFFERING_MODE": "single" },
     { "MEMORY_BANKS_A": 2, "MEMORY_BANKS_B": 2, "BUFFERING_MODE": "single" },
-    { "MEMORY_BANKS_A": 4, "MEMORY_BANKS_B": 2, "BUFFERING_MODE": "single" },
-    { "MEMORY_BANKS_A": 2, "MEMORY_BANKS_B": 4, "BUFFERING_MODE": "single" },
     { "MEMORY_BANKS_A": 4, "MEMORY_BANKS_B": 4, "BUFFERING_MODE": "single" },
 
     { "MEMORY_BANKS_A": 1, "MEMORY_BANKS_B": 1, "BUFFERING_MODE": "double" },
-    { "MEMORY_BANKS_A": 2, "MEMORY_BANKS_B": 1, "BUFFERING_MODE": "double" },
-    { "MEMORY_BANKS_A": 1, "MEMORY_BANKS_B": 2, "BUFFERING_MODE": "double" },
     { "MEMORY_BANKS_A": 2, "MEMORY_BANKS_B": 2, "BUFFERING_MODE": "double" },
-    { "MEMORY_BANKS_A": 4, "MEMORY_BANKS_B": 2, "BUFFERING_MODE": "double" },
-    { "MEMORY_BANKS_A": 2, "MEMORY_BANKS_B": 4, "BUFFERING_MODE": "double" },
     { "MEMORY_BANKS_A": 4, "MEMORY_BANKS_B": 4, "BUFFERING_MODE": "double" }
   ]
 }

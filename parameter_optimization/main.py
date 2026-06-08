@@ -47,7 +47,7 @@ def main():
     parser = argparse.ArgumentParser(description="Roda um experimento arquitetural a partir de um JSON.")
     parser.add_argument(
         "--config-path",
-        default=str(PARAM_DIR / "configs" / "01_compute_sweep.json"),
+        default=str(PARAM_DIR / "configs" / "01_compute_unit_sweep.json"),
         help="Caminho do JSON de experimento.",
     )
     parser.add_argument("--skip-simulation", action="store_true")

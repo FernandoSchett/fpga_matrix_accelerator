@@ -1,0 +1,41 @@
+{
+  "experiment_name": "01_compute_unit_sweep",
+  "description": "Primeira fase: otimiza somente a compute unit, sem matriz completa nem pressao de memoria.",
+  "defaults": {
+    "N": 128,
+    "DATA_WIDTH": 8,
+    "ACC_WIDTH": 32,
+    "MEM_TYPE": "compute_unit_only",
+    "DATAFLOW": "tile_compute",
+    "BUFFERING_MODE": "none",
+    "MEMORY_BURST_LEN": null,
+    "MAC_PIPELINE_STAGES": 0,
+    "MEMORY_BANKS_A": 1,
+    "MEMORY_BANKS_B": 1,
+    "SDRAM_ADDR_W": 26,
+    "SDRAM_DATA_W": 32,
+    "SDRAM_SIMULATION_MODEL": false,
+    "ACCUMULATE_C": false,
+    "TOP_ENTITY": "compute_unit_top"
+  },
+  "sweep": [
+    { "tile_size": 2,  "num_macs": 1,  "MAC_PIPELINE_STAGES": 0 },
+    { "tile_size": 2,  "num_macs": 2,  "MAC_PIPELINE_STAGES": 0 },
+    { "tile_size": 2,  "num_macs": 4,  "MAC_PIPELINE_STAGES": 0 },
+    { "tile_size": 4,  "num_macs": 4,  "MAC_PIPELINE_STAGES": 0 },
+    { "tile_size": 4,  "num_macs": 8,  "MAC_PIPELINE_STAGES": 0 },
+    { "tile_size": 4,  "num_macs": 16, "MAC_PIPELINE_STAGES": 0 },
+    { "tile_size": 8,  "num_macs": 8,  "MAC_PIPELINE_STAGES": 0 },
+    { "tile_size": 8,  "num_macs": 16, "MAC_PIPELINE_STAGES": 0 },
+    { "tile_size": 8,  "num_macs": 32, "MAC_PIPELINE_STAGES": 0 },
+    { "tile_size": 8,  "num_macs": 64, "MAC_PIPELINE_STAGES": 0 },
+    { "tile_size": 16, "num_macs": 16, "MAC_PIPELINE_STAGES": 0 },
+    { "tile_size": 16, "num_macs": 32, "MAC_PIPELINE_STAGES": 0 },
+    { "tile_size": 16, "num_macs": 64, "MAC_PIPELINE_STAGES": 0 },
+    { "tile_size": 8,  "num_macs": 32, "MAC_PIPELINE_STAGES": 1 },
+    { "tile_size": 8,  "num_macs": 64, "MAC_PIPELINE_STAGES": 1 },
+    { "tile_size": 16, "num_macs": 32, "MAC_PIPELINE_STAGES": 1 },
+    { "tile_size": 16, "num_macs": 64, "MAC_PIPELINE_STAGES": 1 },
+    { "tile_size": 16, "num_macs": 64, "MAC_PIPELINE_STAGES": 2 }
+  ]
+}

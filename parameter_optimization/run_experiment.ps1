@@ -126,6 +126,20 @@ function ConvertTo-VhdlStringLiteral {
     return '"' + $Value.Replace('"', '""') + '"'
 }
 
+function ConvertTo-VhdlBoolLiteral {
+    param([object]$Value)
+
+    $text = ([string]$Value).Trim().ToLowerInvariant()
+    if (@("1", "true", "yes", "y", "on") -contains $text) {
+        return "true"
+    }
+    if (@("0", "false", "no", "n", "off") -contains $text) {
+        return "false"
+    }
+
+    throw "Booleano VHDL invalido: $Value"
+}
+
 function ConvertTo-ConfigHashtable {
     param($JsonObject)
 
@@ -175,7 +189,10 @@ function Get-ParameterConnectivity {
     $connected = @(
         "N", "TILE_SIZE", "tile_size", "NUM_MACS", "num_macs", "DATA_WIDTH", "data_width", "ACC_WIDTH", "acc_width",
         "MEM_TYPE", "mem_type", "DATAFLOW", "dataflow", "BUFFERING_MODE", "buffering_mode", "MEMORY_BURST_LEN", "memory_burst_len",
-        "MAC_PIPELINE_STAGES", "mac_pipeline_stages", "MEMORY_BANKS_A", "memory_banks_a", "MEMORY_BANKS_B", "memory_banks_b"
+        "MAC_PIPELINE_STAGES", "mac_pipeline_stages", "MEMORY_BANKS_A", "memory_banks_a", "MEMORY_BANKS_B", "memory_banks_b",
+        "SDRAM_ADDR_W", "sdram_addr_w", "SDRAM_ADDR_WIDTH", "sdram_addr_width",
+        "SDRAM_DATA_W", "sdram_data_w", "SDRAM_DATA_WIDTH", "sdram_data_width",
+        "SDRAM_SIMULATION_MODEL", "sdram_simulation_model", "ACCUMULATE_C", "accumulate_c"
     )
     $metadata = @("TOP_ENTITY", "top_entity")
 
@@ -208,6 +225,10 @@ function New-BoardWrapper {
     $macPipelineStages = [int](Get-ConfigValue -Config $RunConfig -Names @("MAC_PIPELINE_STAGES", "mac_pipeline_stages") -DefaultValue 0)
     $memoryBanksA = [int](Get-ConfigValue -Config $RunConfig -Names @("MEMORY_BANKS_A", "memory_banks_a") -DefaultValue 1)
     $memoryBanksB = [int](Get-ConfigValue -Config $RunConfig -Names @("MEMORY_BANKS_B", "memory_banks_b") -DefaultValue 1)
+    $sdramAddrWidth = [int](Get-ConfigValue -Config $RunConfig -Names @("SDRAM_ADDR_W", "sdram_addr_w", "SDRAM_ADDR_WIDTH", "sdram_addr_width") -DefaultValue 26)
+    $sdramDataWidth = [int](Get-ConfigValue -Config $RunConfig -Names @("SDRAM_DATA_W", "sdram_data_w", "SDRAM_DATA_WIDTH", "sdram_data_width") -DefaultValue 32)
+    $sdramSimulationModel = ConvertTo-VhdlBoolLiteral -Value (Get-ConfigValue -Config $RunConfig -Names @("SDRAM_SIMULATION_MODEL", "sdram_simulation_model") -DefaultValue "false")
+    $accumulateC = ConvertTo-VhdlBoolLiteral -Value (Get-ConfigValue -Config $RunConfig -Names @("ACCUMULATE_C", "accumulate_c") -DefaultValue "false")
 
     $content = @"
 library ieee;
@@ -226,7 +247,18 @@ entity $EntityName is
         HEX2 : out std_logic_vector(6 downto 0);
         HEX3 : out std_logic_vector(6 downto 0);
         HEX4 : out std_logic_vector(6 downto 0);
-        HEX5 : out std_logic_vector(6 downto 0)
+        HEX5 : out std_logic_vector(6 downto 0);
+        DRAM_ADDR  : out std_logic_vector(12 downto 0);
+        DRAM_BA    : out std_logic_vector(1 downto 0);
+        DRAM_CAS_N : out std_logic;
+        DRAM_CKE   : out std_logic;
+        DRAM_CLK   : out std_logic;
+        DRAM_CS_N  : out std_logic;
+        DRAM_DQ    : inout std_logic_vector(15 downto 0);
+        DRAM_LDQM  : out std_logic;
+        DRAM_RAS_N : out std_logic;
+        DRAM_UDQM  : out std_logic;
+        DRAM_WE_N  : out std_logic
     );
 end entity $EntityName;
 
@@ -246,6 +278,10 @@ begin
             MAC_PIPELINE_STAGES => $macPipelineStages,
             MEMORY_BANKS_A => $memoryBanksA,
             MEMORY_BANKS_B => $memoryBanksB,
+            SDRAM_ADDR_W => $sdramAddrWidth,
+            SDRAM_DATA_W => $sdramDataWidth,
+            SDRAM_SIMULATION_MODEL => $sdramSimulationModel,
+            ACCUMULATE_C => $accumulateC,
             ENABLE_SIGNALTAP => false
         )
         port map (
@@ -260,7 +296,18 @@ begin
             HEX2 => HEX2,
             HEX3 => HEX3,
             HEX4 => HEX4,
-            HEX5 => HEX5
+            HEX5 => HEX5,
+            DRAM_ADDR => DRAM_ADDR,
+            DRAM_BA => DRAM_BA,
+            DRAM_CAS_N => DRAM_CAS_N,
+            DRAM_CKE => DRAM_CKE,
+            DRAM_CLK => DRAM_CLK,
+            DRAM_CS_N => DRAM_CS_N,
+            DRAM_DQ => DRAM_DQ,
+            DRAM_LDQM => DRAM_LDQM,
+            DRAM_RAS_N => DRAM_RAS_N,
+            DRAM_UDQM => DRAM_UDQM,
+            DRAM_WE_N => DRAM_WE_N
         );
 end architecture rtl;
 "@
@@ -346,6 +393,60 @@ end architecture rtl;
     Set-Content -LiteralPath $PathValue -Value $content -Encoding ASCII
 }
 
+function New-ComputeWrapper {
+    param(
+        [string]$PathValue,
+        [string]$EntityName,
+        [hashtable]$RunConfig
+    )
+
+    $tileSize = [int](Get-ConfigValue -Config $RunConfig -Names @("TILE_SIZE", "tile_size") -DefaultValue 4)
+    $numMacs = [int](Get-ConfigValue -Config $RunConfig -Names @("NUM_MACS", "num_macs") -DefaultValue 4)
+    $dataWidth = [int](Get-ConfigValue -Config $RunConfig -Names @("DATA_WIDTH", "data_width") -DefaultValue 8)
+    $accWidth = [int](Get-ConfigValue -Config $RunConfig -Names @("ACC_WIDTH", "acc_width") -DefaultValue 32)
+    $macPipelineStages = [int](Get-ConfigValue -Config $RunConfig -Names @("MAC_PIPELINE_STAGES", "mac_pipeline_stages") -DefaultValue 0)
+
+    $content = @"
+library ieee;
+use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
+
+entity $EntityName is
+    port (
+        clk : in std_logic;
+        rst : in std_logic;
+        start : in std_logic;
+        busy : out std_logic;
+        done : out std_logic;
+        result_probe : out std_logic_vector(31 downto 0);
+        mac_ops_issued : out unsigned(31 downto 0)
+    );
+end entity $EntityName;
+
+architecture rtl of $EntityName is
+begin
+    u_compute_top : entity work.compute_unit_top
+        generic map (
+            TILE_SIZE => $tileSize,
+            NUM_MACS => $numMacs,
+            DATA_WIDTH => $dataWidth,
+            ACC_WIDTH => $accWidth,
+            MAC_PIPELINE_STAGES => $macPipelineStages
+        )
+        port map (
+            clk => clk,
+            rst => rst,
+            start => start,
+            busy => busy,
+            done => done,
+            result_probe => result_probe,
+            mac_ops_issued => mac_ops_issued
+        );
+end architecture rtl;
+"@
+    Set-Content -LiteralPath $PathValue -Value $content -Encoding ASCII
+}
+
 function New-ExperimentQpf {
     param(
         [string]$PathValue,
@@ -370,21 +471,35 @@ function New-ExperimentQsf {
         [bool]$UseBoardPins
     )
 
-    $rtlFiles = @(
+    $vhdlFiles = @(
         "rtl/common/matrix_tiled_pkg.vhd",
         "rtl/common/matrix_accel_config_pkg.vhd",
         "rtl/common/perf_counters.vhd",
         "rtl/common/sigma_hex_display.vhd",
+        "rtl/memory/sdram_bus_if.vhd",
         "rtl/compute/mac_unit.vhd",
         "rtl/compute/matrix_tiled_compute_core.vhd",
         "rtl/memory/matrix_single_port_ram.vhd",
+        "rtl/memory/matrix_memory_map.vhd",
+        "rtl/memory/tile_buffer_m10k.vhd",
+        "rtl/memory/sdram_ip_core.vhd",
+        "rtl/memory/sdram_controller_wrapper.vhd",
+        "rtl/control/memory_manager.vhd",
+        "rtl/control/tile_loader.vhd",
+        "rtl/control/tile_writer.vhd",
+        "rtl/control/sdram_tile_scheduler.vhd",
         "rtl/control/command_interface.vhd",
         "rtl/uart/uart_rx.vhd",
         "rtl/uart/uart_tx.vhd",
         "rtl/uart/uart_byte_fifo.vhd",
         "rtl/debug/signaltap_debug_core.vhd",
         "rtl/compute/matrix_mult_tiled_core.vhd",
+        "rtl/compute/matrix_mult_sdram_tiled_core.vhd",
+        "rtl/top/compute_unit_top.vhd",
         "rtl/top/matrix_accelerator_full_top.vhd"
+    )
+    $verilogFiles = @(
+        "rtl/ip/stffrdhrn_sdram_controller/sdram_controller.v"
     )
 
     $lines = @(
@@ -398,10 +513,16 @@ function New-ExperimentQsf {
         "set_global_assignment -name SDC_FILE `"$((ConvertTo-QsfPath (Join-Path $projectRoot 'fpga_matrix_accelerator.sdc')))`""
     )
 
-    foreach ($rtlFile in $rtlFiles) {
+    foreach ($rtlFile in $vhdlFiles) {
         $fullPath = Join-Path $projectRoot $rtlFile
         if (Test-Path -LiteralPath $fullPath) {
             $lines += "set_global_assignment -name VHDL_FILE `"$(ConvertTo-QsfPath $fullPath)`""
+        }
+    }
+    foreach ($rtlFile in $verilogFiles) {
+        $fullPath = Join-Path $projectRoot $rtlFile
+        if (Test-Path -LiteralPath $fullPath) {
+            $lines += "set_global_assignment -name VERILOG_FILE `"$(ConvertTo-QsfPath $fullPath)`""
         }
     }
     $lines += "set_global_assignment -name VHDL_FILE `"$(ConvertTo-QsfPath $WrapperPath)`""
@@ -566,20 +687,42 @@ foreach ($sweepItem in $sweep) {
     if (-not $runConfig.ContainsKey("MAC_PIPELINE_STAGES") -or $null -eq $runConfig["MAC_PIPELINE_STAGES"]) { $runConfig["MAC_PIPELINE_STAGES"] = 0 }
     if (-not $runConfig.ContainsKey("MEMORY_BANKS_A") -or $null -eq $runConfig["MEMORY_BANKS_A"]) { $runConfig["MEMORY_BANKS_A"] = 1 }
     if (-not $runConfig.ContainsKey("MEMORY_BANKS_B") -or $null -eq $runConfig["MEMORY_BANKS_B"]) { $runConfig["MEMORY_BANKS_B"] = 1 }
+    if (-not $runConfig.ContainsKey("SDRAM_ADDR_W") -or $null -eq $runConfig["SDRAM_ADDR_W"]) { $runConfig["SDRAM_ADDR_W"] = 26 }
+    if (-not $runConfig.ContainsKey("SDRAM_DATA_W") -or $null -eq $runConfig["SDRAM_DATA_W"]) { $runConfig["SDRAM_DATA_W"] = 32 }
+    if (-not $runConfig.ContainsKey("SDRAM_SIMULATION_MODEL") -or $null -eq $runConfig["SDRAM_SIMULATION_MODEL"]) { $runConfig["SDRAM_SIMULATION_MODEL"] = "false" }
+    if (-not $runConfig.ContainsKey("ACCUMULATE_C") -or $null -eq $runConfig["ACCUMULATE_C"]) { $runConfig["ACCUMULATE_C"] = "false" }
 
-    $connectivityWarnings = Get-ParameterConnectivity -RunConfig $runConfig
+    $connectivityWarnings = @(Get-ParameterConnectivity -RunConfig $runConfig)
 
     $baseTopEntity = [string](Get-ConfigValue -Config $runConfig -Names @("TOP_ENTITY", "top_entity") -DefaultValue "matrix_accelerator_full_top")
     $useBoardTop = $true
+    $topKind = "board"
     if ($baseTopEntity -eq "matrix_accelerator_sdram_core_top") {
         $baseTopEntity = "matrix_accelerator_full_top"
     }
 
-    if ($baseTopEntity -eq "matrix_mult_tiled_core") {
+    if ($baseTopEntity -eq "compute_unit_top") {
         $useBoardTop = $false
+        $topKind = "compute"
+    } elseif ($baseTopEntity -eq "matrix_mult_tiled_core") {
+        $useBoardTop = $false
+        $topKind = "core"
     } elseif ($baseTopEntity -ne "matrix_accelerator_full_top") {
         $connectivityWarnings += "TOP_ENTITY '$baseTopEntity' nao existe no RTL atual; usando matrix_accelerator_full_top."
         $baseTopEntity = "matrix_accelerator_full_top"
+        $topKind = "board"
+    }
+
+    if ($topKind -eq "compute") {
+        foreach ($metadataParam in @(
+            "N", "MEM_TYPE", "DATAFLOW", "BUFFERING_MODE", "MEMORY_BURST_LEN",
+            "MEMORY_BANKS_A", "MEMORY_BANKS_B", "SDRAM_ADDR_W", "SDRAM_DATA_W",
+            "SDRAM_SIMULATION_MODEL", "ACCUMULATE_C"
+        )) {
+            if ($runConfig.ContainsKey($metadataParam)) {
+                $connectivityWarnings += "Parametro '$metadataParam' nao afeta compute_unit_top; sera usado so como metadado/modelo."
+            }
+        }
     }
 
     $runId = Get-RunName -RunIndex $runIndex -RunConfig $runConfig
@@ -594,20 +737,35 @@ foreach ($sweepItem in $sweep) {
 
     $topEntity = "$($baseTopEntity)_$runId"
     $wrapperPath = Join-Path $generatedDir "$topEntity.vhd"
-    if ($useBoardTop) {
+    if ($topKind -eq "board") {
         New-BoardWrapper -PathValue $wrapperPath -EntityName $topEntity -RunConfig $runConfig
+    } elseif ($topKind -eq "compute") {
+        New-ComputeWrapper -PathValue $wrapperPath -EntityName $topEntity -RunConfig $runConfig
     } else {
         New-CoreWrapper -PathValue $wrapperPath -EntityName $topEntity -RunConfig $runConfig
     }
 
     $runConfig["RUN_ID"] = $runId
     $runConfig["TOP_ENTITY_GENERATED"] = $topEntity
-    $runConfig["CONNECTED_RTL_PARAMETERS"] = @(
-        "N", "TILE_SIZE", "NUM_MACS", "DATA_WIDTH", "ACC_WIDTH",
-        "MEM_TYPE", "DATAFLOW", "BUFFERING_MODE", "MEMORY_BURST_LEN",
-        "MAC_PIPELINE_STAGES", "MEMORY_BANKS_A", "MEMORY_BANKS_B"
-    )
-    $runConfig["METADATA_ONLY_PARAMETERS"] = @()
+    if ($topKind -eq "compute") {
+        $runConfig["CONNECTED_RTL_PARAMETERS"] = @(
+            "TILE_SIZE", "NUM_MACS", "DATA_WIDTH", "ACC_WIDTH", "MAC_PIPELINE_STAGES"
+        )
+        $runConfig["METADATA_ONLY_PARAMETERS"] = @(
+            "N", "MEM_TYPE", "DATAFLOW", "BUFFERING_MODE", "MEMORY_BURST_LEN",
+            "MEMORY_BANKS_A", "MEMORY_BANKS_B", "SDRAM_ADDR_W", "SDRAM_DATA_W",
+            "SDRAM_SIMULATION_MODEL", "ACCUMULATE_C"
+        )
+    } else {
+        $runConfig["CONNECTED_RTL_PARAMETERS"] = @(
+            "N", "TILE_SIZE", "NUM_MACS", "DATA_WIDTH", "ACC_WIDTH",
+            "MEM_TYPE", "DATAFLOW", "BUFFERING_MODE", "MEMORY_BURST_LEN",
+            "MAC_PIPELINE_STAGES", "MEMORY_BANKS_A", "MEMORY_BANKS_B",
+            "SDRAM_ADDR_W", "SDRAM_DATA_W", "SDRAM_SIMULATION_MODEL", "ACCUMULATE_C"
+        )
+        $runConfig["METADATA_ONLY_PARAMETERS"] = @()
+    }
+    $runConfig["TOP_KIND"] = $topKind
     $runConfig["WARNINGS"] = $connectivityWarnings
     $runConfig | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $runDir "config.json") -Encoding UTF8
 
@@ -629,6 +787,10 @@ foreach ($sweepItem in $sweep) {
         $macPipelineStages = [string](Get-ConfigValue -Config $runConfig -Names @("MAC_PIPELINE_STAGES", "mac_pipeline_stages") -DefaultValue 0)
         $memoryBanksA = [string](Get-ConfigValue -Config $runConfig -Names @("MEMORY_BANKS_A", "memory_banks_a") -DefaultValue 1)
         $memoryBanksB = [string](Get-ConfigValue -Config $runConfig -Names @("MEMORY_BANKS_B", "memory_banks_b") -DefaultValue 1)
+        $simulationEntity = "tb_matrix_mult_tiled_core_perf"
+        if ($topKind -eq "compute") {
+            $simulationEntity = "tb_compute_unit_perf"
+        }
         $simCommand = @(
             "powershell",
             "-NoProfile",
@@ -637,7 +799,7 @@ foreach ($sweepItem in $sweep) {
             "-File",
             (Join-Path $projectRoot "run_testbenchs.ps1"),
             "-Only",
-            "tb_matrix_mult_tiled_core_perf",
+            $simulationEntity,
             "-N",
             $nValue,
             "-TileSize",

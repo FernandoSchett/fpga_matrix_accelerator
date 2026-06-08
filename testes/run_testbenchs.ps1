@@ -215,6 +215,7 @@ function Get-RtlSources {
         "rtl/uart/uart_tx.vhd",
         "rtl/uart/uart_byte_fifo.vhd",
         "rtl/debug/signaltap_debug_core.vhd",
+        "rtl/top/compute_unit_top.vhd",
         "rtl/top/matrix_accelerator_full_top.vhd"
     )
 
@@ -263,6 +264,7 @@ function Invoke-Testbench {
     if (
         $Entity -eq "tb_matrix_mult_tiled_core" -or
         $Entity -eq "tb_matrix_mult_tiled_core_perf" -or
+        $Entity -eq "tb_compute_unit_perf" -or
         $Entity -eq "tb_matrix_accelerator_full_top_uart_protocol"
     ) {
         if ($N -gt 0) { $genericArgs += "-gN=$N" }
@@ -299,6 +301,7 @@ function Invoke-Testbench {
 $tests = @(
     "tb_matrix_mult_tiled_core",
     "tb_matrix_mult_tiled_core_perf",
+    "tb_compute_unit_perf",
     "tb_tile_compute_engine",
     "tb_perf_counters",
     "tb_command_interface",

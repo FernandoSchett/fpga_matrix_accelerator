@@ -37,7 +37,10 @@ $QsfPath = Join-Path $ProjectDir "$ProjectName.qsf"
 
 Set-Location $ProjectDir
 
-$UserBoundParameters = $PSBoundParameters.Clone()
+$UserBoundParameters = @{}
+foreach ($key in $PSBoundParameters.Keys) {
+    $UserBoundParameters[$key] = $PSBoundParameters[$key]
+}
 
 function Read-DotEnvFile {
     param([string]$Path)

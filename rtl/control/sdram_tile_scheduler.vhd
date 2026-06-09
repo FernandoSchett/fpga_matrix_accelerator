@@ -83,6 +83,22 @@ architecture rtl of sdram_tile_scheduler is
         return PANEL_TILES;
     end function;
 
+    function next_k_value(k_value : natural) return natural is
+    begin
+        if k_value + 1 < NUM_TILES then
+            return k_value + 1;
+        end if;
+        return k_value;
+    end function;
+
+    function alternate_bank(bank_value : natural) return natural is
+    begin
+        if PANEL_TILES > 1 then
+            return (bank_value + 1) mod PANEL_TILES;
+        end if;
+        return 0;
+    end function;
+
 begin
 
     assert N mod TILE_SIZE = 0
@@ -206,9 +222,9 @@ begin
                         compute_k_reg <= 0;
                         compute_bank_base_reg <= 0;
                         if NUM_TILES > 1 then
-                            load_k_reg <= 1;
-                            tile_k_reg <= 1;
-                            loader_bank_base_reg <= 1;
+                            load_k_reg <= next_k_value(0);
+                            tile_k_reg <= next_k_value(0);
+                            loader_bank_base_reg <= alternate_bank(0);
                             loader_done_seen <= '0';
                             compute_done_seen <= '0';
                             state <= DB_START_COMPUTE_LOAD;
@@ -243,9 +259,9 @@ begin
                         compute_done_seen <= '0';
 
                         if load_k_reg + 1 < NUM_TILES then
-                            load_k_reg <= load_k_reg + 1;
-                            tile_k_reg <= load_k_reg + 1;
-                            loader_bank_base_reg <= compute_bank_base_reg;
+                            load_k_reg <= next_k_value(load_k_reg);
+                            tile_k_reg <= next_k_value(load_k_reg);
+                            loader_bank_base_reg <= alternate_bank(loader_bank_base_reg);
                             state <= DB_START_COMPUTE_LOAD;
                         else
                             state <= DB_START_COMPUTE_ONLY;

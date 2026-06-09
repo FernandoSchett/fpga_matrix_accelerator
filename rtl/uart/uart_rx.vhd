@@ -33,7 +33,6 @@ architecture rtl of uart_rx is
     signal rx_byte_reg  : std_logic_vector(7 downto 0) := (others => '0');
     signal rx_valid_reg : std_logic := '0';
 
-    -- Sincronizador para entrada assíncrona vinda do USB-serial.
     signal rx_meta : std_logic := '1';
     signal rx_sync : std_logic := '1';
 
@@ -77,7 +76,6 @@ begin
                     end if;
 
                 when START_BIT =>
-                    -- Amostra no meio do start bit.
                     if clk_count = (CLKS_PER_BIT - 1) / 2 then
                         if rx_sync = '0' then
                             clk_count <= 0;
@@ -108,7 +106,6 @@ begin
                     if clk_count = CLKS_PER_BIT-1 then
                         clk_count <= 0;
 
-                        -- Só aceita o byte se o stop bit estiver alto.
                         if rx_sync = '1' then
                             rx_valid_reg <= '1';
                         end if;

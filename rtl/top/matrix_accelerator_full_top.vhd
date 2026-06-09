@@ -519,24 +519,24 @@ begin
 
     -- Debug LED map for board bring-up:
     -- LEDR0: heartbeat/clock alive.
-    -- LEDR1: live raw UART RX low. If lit while idle, RX is inverted/stuck/incorrect.
+    -- LEDR1: board reset input is active.
     -- LEDR2: raw UART RX pin went low since reset; proves electrical RX activity.
     -- LEDR3: UART byte decoded; proves baud/CLKS_PER_BIT is plausible.
     -- LEDR4: command byte consumed from RX FIFO.
-    -- LEDR5: host write accepted by core/memory path.
-    -- LEDR6: load while running, STREAM_C readback after done.
-    -- LEDR7: compute while running, waiting C read data after done.
-    -- LEDR8: store while running, UART TX activity after done.
-    -- LEDR9: FIFO/protocol error latch, cleared by CLEAR or board reset.
+    -- LEDR5: response byte queued by command interface.
+    -- LEDR6: UART TX line went low; proves ACK/data physically started leaving.
+    -- LEDR7: CLEAR command was decoded.
+    -- LEDR8: SDRAM PLL locked.
+    -- LEDR9: FIFO/protocol/memory error latch, cleared by CLEAR or board reset.
     LEDR(0) <= dbg_heartbeat_reg;
-    LEDR(1) <= not uart_rx_i;
+    LEDR(1) <= rst;
     LEDR(2) <= dbg_uart_rx_line_seen;
     LEDR(3) <= dbg_uart_rx_seen;
     LEDR(4) <= dbg_cmd_rx_seen;
-    LEDR(5) <= dbg_host_wr_seen;
-    LEDR(6) <= status_load_active or dbg_stream_c_active;
-    LEDR(7) <= status_compute_active or dbg_wait_read_c;
-    LEDR(8) <= status_store_active or dbg_uart_tx_low_seen;
+    LEDR(5) <= dbg_cmd_tx_seen;
+    LEDR(6) <= dbg_uart_tx_low_seen;
+    LEDR(7) <= dbg_cmd_clear_seen;
+    LEDR(8) <= sdram_pll_locked;
     LEDR(9) <= dbg_error_seen;
 
     u_sigma_hex : entity work.sigma_hex_display

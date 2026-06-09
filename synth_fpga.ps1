@@ -369,7 +369,8 @@ READ_COUNTERS=true
         @{ Key = "NUM_MACS"; Value = "$NumMacs" },
         @{ Key = "DATA_WIDTH"; Value = "$DataWidth" },
         @{ Key = "ACC_WIDTH"; Value = "$AccWidth" },
-        @{ Key = "UART_BAUDRATE"; Value = "$uartBaudrate" }
+        @{ Key = "UART_BAUDRATE"; Value = "$uartBaudrate" },
+        @{ Key = "C_STREAM_CHUNK_ELEMS"; Value = "4096" }
     )) {
         $key = $pair.Key
         $value = $pair.Value

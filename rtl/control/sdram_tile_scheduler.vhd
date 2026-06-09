@@ -5,7 +5,8 @@ entity sdram_tile_scheduler is
     generic (
         N           : positive := 512;
         TILE_SIZE   : positive := 16;
-        PANEL_TILES : positive := 1
+        PANEL_TILES : positive := 1;
+        DOUBLE_BUFFERING : boolean := false
     );
     port (
         clk : in std_logic;
@@ -19,6 +20,8 @@ entity sdram_tile_scheduler is
         tile_j : out natural range 0 to (N/TILE_SIZE)-1;
         tile_k : out natural range 0 to (N/TILE_SIZE)-1;
         panel_count : out natural range 1 to PANEL_TILES;
+        loader_bank_base : out natural range 0 to PANEL_TILES-1;
+        compute_bank_base : out natural range 0 to PANEL_TILES-1;
 
         load_c        : out std_logic;
         loader_start  : out std_logic;
@@ -46,6 +49,12 @@ architecture rtl of sdram_tile_scheduler is
         START_COMPUTE,
         WAIT_COMPUTE,
         NEXT_K,
+        DB_START_LOAD_FIRST,
+        DB_WAIT_LOAD_FIRST,
+        DB_START_COMPUTE_LOAD,
+        DB_WAIT_COMPUTE_LOAD,
+        DB_START_COMPUTE_ONLY,
+        DB_WAIT_COMPUTE_ONLY,
         START_WRITE,
         WAIT_WRITE,
         NEXT_TILE,
@@ -57,6 +66,12 @@ architecture rtl of sdram_tile_scheduler is
     signal tile_j_reg : natural range 0 to NUM_TILES-1 := 0;
     signal tile_k_reg : natural range 0 to NUM_TILES-1 := 0;
     signal panel_count_reg : natural range 1 to PANEL_TILES := 1;
+    signal loader_bank_base_reg : natural range 0 to PANEL_TILES-1 := 0;
+    signal compute_bank_base_reg : natural range 0 to PANEL_TILES-1 := 0;
+    signal compute_k_reg : natural range 0 to NUM_TILES-1 := 0;
+    signal load_k_reg : natural range 0 to NUM_TILES-1 := 0;
+    signal loader_done_seen : std_logic := '0';
+    signal compute_done_seen : std_logic := '0';
 
     function active_panel_count(k_base : natural) return natural is
         variable remaining_tiles : natural;
@@ -78,11 +93,19 @@ begin
     tile_j <= tile_j_reg;
     tile_k <= tile_k_reg;
     panel_count <= panel_count_reg;
+    loader_bank_base <= loader_bank_base_reg;
+    compute_bank_base <= compute_bank_base_reg;
 
     load_c <= '1' when tile_k_reg = 0 else '0';
 
-    load_active    <= '1' when state = START_LOAD or state = WAIT_LOAD else '0';
-    compute_active <= '1' when state = START_COMPUTE or state = WAIT_COMPUTE else '0';
+    load_active    <= '1' when state = START_LOAD or state = WAIT_LOAD or
+                               state = DB_START_LOAD_FIRST or state = DB_WAIT_LOAD_FIRST or
+                               state = DB_START_COMPUTE_LOAD or state = DB_WAIT_COMPUTE_LOAD
+                      else '0';
+    compute_active <= '1' when state = START_COMPUTE or state = WAIT_COMPUTE or
+                               state = DB_START_COMPUTE_LOAD or state = DB_WAIT_COMPUTE_LOAD or
+                               state = DB_START_COMPUTE_ONLY or state = DB_WAIT_COMPUTE_ONLY
+                      else '0';
     store_active   <= '1' when state = START_WRITE or state = WAIT_WRITE else '0';
 
     process(clk, rst)
@@ -93,6 +116,12 @@ begin
             tile_j_reg    <= 0;
             tile_k_reg    <= 0;
             panel_count_reg <= 1;
+            loader_bank_base_reg <= 0;
+            compute_bank_base_reg <= 0;
+            compute_k_reg <= 0;
+            load_k_reg <= 0;
+            loader_done_seen <= '0';
+            compute_done_seen <= '0';
             busy          <= '0';
             done          <= '0';
             tile_done     <= '0';
@@ -115,8 +144,19 @@ begin
                         tile_i_reg <= 0;
                         tile_j_reg <= 0;
                         tile_k_reg <= 0;
+                        compute_k_reg <= 0;
+                        load_k_reg <= 0;
+                        loader_bank_base_reg <= 0;
+                        compute_bank_base_reg <= 0;
+                        loader_done_seen <= '0';
+                        compute_done_seen <= '0';
                         panel_count_reg <= active_panel_count(0);
-                        state      <= START_LOAD;
+                        if DOUBLE_BUFFERING and PANEL_TILES >= 2 then
+                            panel_count_reg <= 1;
+                            state <= DB_START_LOAD_FIRST;
+                        else
+                            state <= START_LOAD;
+                        end if;
                     end if;
 
                 when START_LOAD =>
@@ -151,6 +191,79 @@ begin
                         state <= START_LOAD;
                     end if;
 
+                when DB_START_LOAD_FIRST =>
+                    busy <= '1';
+                    tile_k_reg <= load_k_reg;
+                    loader_bank_base_reg <= 0;
+                    compute_bank_base_reg <= 0;
+                    panel_count_reg <= 1;
+                    loader_start <= '1';
+                    state <= DB_WAIT_LOAD_FIRST;
+
+                when DB_WAIT_LOAD_FIRST =>
+                    busy <= '1';
+                    if loader_done = '1' then
+                        compute_k_reg <= 0;
+                        compute_bank_base_reg <= 0;
+                        if NUM_TILES > 1 then
+                            load_k_reg <= 1;
+                            tile_k_reg <= 1;
+                            loader_bank_base_reg <= 1;
+                            loader_done_seen <= '0';
+                            compute_done_seen <= '0';
+                            state <= DB_START_COMPUTE_LOAD;
+                        else
+                            state <= DB_START_COMPUTE_ONLY;
+                        end if;
+                    end if;
+
+                when DB_START_COMPUTE_LOAD =>
+                    busy <= '1';
+                    panel_count_reg <= 1;
+                    loader_start <= '1';
+                    compute_start <= '1';
+                    loader_done_seen <= '0';
+                    compute_done_seen <= '0';
+                    state <= DB_WAIT_COMPUTE_LOAD;
+
+                when DB_WAIT_COMPUTE_LOAD =>
+                    busy <= '1';
+                    if loader_done = '1' then
+                        loader_done_seen <= '1';
+                    end if;
+                    if compute_done = '1' then
+                        compute_done_seen <= '1';
+                    end if;
+
+                    if (loader_done_seen = '1' or loader_done = '1') and
+                       (compute_done_seen = '1' or compute_done = '1') then
+                        compute_k_reg <= load_k_reg;
+                        compute_bank_base_reg <= loader_bank_base_reg;
+                        loader_done_seen <= '0';
+                        compute_done_seen <= '0';
+
+                        if load_k_reg + 1 < NUM_TILES then
+                            load_k_reg <= load_k_reg + 1;
+                            tile_k_reg <= load_k_reg + 1;
+                            loader_bank_base_reg <= compute_bank_base_reg;
+                            state <= DB_START_COMPUTE_LOAD;
+                        else
+                            state <= DB_START_COMPUTE_ONLY;
+                        end if;
+                    end if;
+
+                when DB_START_COMPUTE_ONLY =>
+                    busy <= '1';
+                    panel_count_reg <= 1;
+                    compute_start <= '1';
+                    state <= DB_WAIT_COMPUTE_ONLY;
+
+                when DB_WAIT_COMPUTE_ONLY =>
+                    busy <= '1';
+                    if compute_done = '1' then
+                        state <= START_WRITE;
+                    end if;
+
                 when START_WRITE =>
                     busy         <= '1';
                     writer_start <= '1';
@@ -167,17 +280,33 @@ begin
                     busy       <= '1';
                     tile_k_reg <= 0;
                     panel_count_reg <= active_panel_count(0);
+                    compute_k_reg <= 0;
+                    load_k_reg <= 0;
+                    loader_bank_base_reg <= 0;
+                    compute_bank_base_reg <= 0;
+                    loader_done_seen <= '0';
+                    compute_done_seen <= '0';
                     if tile_j_reg = NUM_TILES-1 then
                         tile_j_reg <= 0;
                         if tile_i_reg = NUM_TILES-1 then
                             state <= DONE_STATE;
                         else
                             tile_i_reg <= tile_i_reg + 1;
-                            state      <= START_LOAD;
+                            if DOUBLE_BUFFERING and PANEL_TILES >= 2 then
+                                panel_count_reg <= 1;
+                                state <= DB_START_LOAD_FIRST;
+                            else
+                                state <= START_LOAD;
+                            end if;
                         end if;
                     else
                         tile_j_reg <= tile_j_reg + 1;
-                        state      <= START_LOAD;
+                        if DOUBLE_BUFFERING and PANEL_TILES >= 2 then
+                            panel_count_reg <= 1;
+                            state <= DB_START_LOAD_FIRST;
+                        else
+                            state <= START_LOAD;
+                        end if;
                     end if;
 
                 when DONE_STATE =>

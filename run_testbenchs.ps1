@@ -9,6 +9,7 @@ param(
     [int]$MacPipelineStages = -1,
     [int]$MemoryBanksA = 0,
     [int]$MemoryBanksB = 0,
+    [string]$BufferingMode = "",
     [int]$VsimRetryCount = 10,
     [int]$VsimRetrySeconds = 30,
     [switch]$Quartus,
@@ -28,6 +29,7 @@ if ($MemoryBurstLen -gt 0) { $forwardArgs.MemoryBurstLen = $MemoryBurstLen }
 if ($MacPipelineStages -ge 0) { $forwardArgs.MacPipelineStages = $MacPipelineStages }
 if ($MemoryBanksA -gt 0) { $forwardArgs.MemoryBanksA = $MemoryBanksA }
 if ($MemoryBanksB -gt 0) { $forwardArgs.MemoryBanksB = $MemoryBanksB }
+if ($BufferingMode -ne "") { $forwardArgs.BufferingMode = $BufferingMode }
 if ($VsimRetryCount -gt 0) { $forwardArgs.VsimRetryCount = $VsimRetryCount }
 if ($VsimRetrySeconds -gt 0) { $forwardArgs.VsimRetrySeconds = $VsimRetrySeconds }
 if ($Quartus) { $forwardArgs.Quartus = $true }

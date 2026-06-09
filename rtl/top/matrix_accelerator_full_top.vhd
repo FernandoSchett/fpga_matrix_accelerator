@@ -26,6 +26,7 @@ entity matrix_accelerator_full_top is
         SDRAM_ADDR_W        : positive := 26;
         SDRAM_DATA_W        : positive := 32;
         SDRAM_SIMULATION_MODEL : boolean := false;
+        SDRAM_CLK_PHASE_SHIFT_PS : string := "-3000";
         ACCUMULATE_C        : boolean := false;
         ENABLE_SIGNALTAP    : boolean := true
     );
@@ -106,6 +107,9 @@ architecture rtl of matrix_accelerator_full_top is
     signal accel_busy  : std_logic;
     signal accel_done  : std_logic;
     signal done_seen   : std_logic := '0';
+    signal accel_core_rst : std_logic;
+    signal dram_clk_out   : std_logic;
+    signal sdram_pll_locked : std_logic;
 
     signal host_cmd_valid  : std_logic;
     signal host_cmd_write  : std_logic;
@@ -177,6 +181,8 @@ begin
     -- Keep SDRAM/controller alive across host CLEAR commands.
     -- CLEAR is a protocol/session reset, not a board-level memory reset.
     accel_rst   <= rst;
+    accel_core_rst <= accel_rst or (not sdram_pll_locked);
+    DRAM_CLK <= dram_clk_out;
 
     host_data_out <= std_logic_vector(resize(accel_data_out, HOST_DATA_WIDTH));
     system_error <= dbg_error_seen or status_memory_error;
@@ -185,6 +191,24 @@ begin
     cmd_rx_valid  <= rx_fifo_rd_en;
 
     cmd_tx_busy <= tx_fifo_almost_full or tx_fifo_full;
+
+    gen_sim_sdram_clock : if SDRAM_SIMULATION_MODEL generate
+        dram_clk_out <= clk;
+        sdram_pll_locked <= '1';
+    end generate;
+
+    gen_physical_sdram_clock : if not SDRAM_SIMULATION_MODEL generate
+        u_sdram_clock_pll : entity work.sdram_clock_pll
+            generic map (
+                PHASE_SHIFT_PS => SDRAM_CLK_PHASE_SHIFT_PS
+            )
+            port map (
+                clk_in    => clk,
+                rst       => rst,
+                sdram_clk => dram_clk_out,
+                locked    => sdram_pll_locked
+            );
+    end generate;
 
     u_uart_rx : entity work.uart_rx
         generic map (
@@ -335,11 +359,12 @@ begin
             SDRAM_DATA_W        => SDRAM_DATA_W,
             SDRAM_SIMULATION_MODEL => SDRAM_SIMULATION_MODEL,
             ACCUMULATE_C        => ACCUMULATE_C,
+            BUFFERING_MODE      => BUFFERING_MODE,
             MAC_PIPELINE_STAGES => MAC_PIPELINE_STAGES
         )
         port map (
             clk         => clk,
-            rst         => accel_rst,
+            rst         => accel_core_rst,
             soft_clear  => cmd_clear,
             host_cmd_valid => host_cmd_valid,
             host_cmd_write => host_cmd_write,
@@ -362,7 +387,7 @@ begin
             dram_ba    => DRAM_BA,
             dram_cas_n => DRAM_CAS_N,
             dram_cke   => DRAM_CKE,
-            dram_clk   => DRAM_CLK,
+            dram_clk   => open,
             dram_cs_n  => DRAM_CS_N,
             dram_dq    => DRAM_DQ,
             dram_ldqm  => DRAM_LDQM,
@@ -377,7 +402,7 @@ begin
         )
         port map (
             clk                   => clk,
-            rst                   => accel_rst,
+            rst                   => accel_core_rst,
             start_count           => accel_start,
             stop_count            => accel_done,
             load_active           => status_load_active,

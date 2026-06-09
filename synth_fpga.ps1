@@ -7,11 +7,11 @@ param(
 
     [string]$MemType = "external_sdram",
     [string]$Dataflow = "output_stationary",
-    [string]$BufferingMode = "single",
-    [int]$MemoryBurstLen = 1,
+    [string]$BufferingMode = "double",
+    [int]$MemoryBurstLen = 4,
     [int]$MacPipelineStages = 0,
-    [int]$MemoryBanksA = 1,
-    [int]$MemoryBanksB = 1,
+    [int]$MemoryBanksA = 2,
+    [int]$MemoryBanksB = 2,
 
     [int]$ClksPerBit = 434,
     [int]$ClkFreqHz = 50000000,

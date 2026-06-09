@@ -9,6 +9,7 @@ param(
     [int]$MacPipelineStages = -1,
     [int]$MemoryBanksA = 0,
     [int]$MemoryBanksB = 0,
+    [string]$BufferingMode = "",
     [int]$VsimRetryCount = 10,
     [int]$VsimRetrySeconds = 30,
     [switch]$Quartus,
@@ -202,6 +203,7 @@ function Get-RtlSources {
         "rtl/memory/matrix_single_port_ram.vhd",
         "rtl/memory/matrix_memory_map.vhd",
         "rtl/memory/tile_buffer_m10k.vhd",
+        "rtl/memory/sdram_clock_pll.vhd",
         "rtl/memory/sdram_ip_core.vhd",
         "rtl/memory/sdram_controller_wrapper.vhd",
         "rtl/control/memory_manager.vhd",
@@ -276,6 +278,14 @@ function Invoke-Testbench {
         if ($MacPipelineStages -ge 0) { $genericArgs += "-gMAC_PIPELINE_STAGES=$MacPipelineStages" }
         if ($MemoryBanksA -gt 0) { $genericArgs += "-gMEMORY_BANKS_A=$MemoryBanksA" }
         if ($MemoryBanksB -gt 0) { $genericArgs += "-gMEMORY_BANKS_B=$MemoryBanksB" }
+        if (
+            $BufferingMode -ne "" -and
+            ($Entity -eq "tb_matrix_mult_tiled_core" -or
+             $Entity -eq "tb_matrix_mult_tiled_core_perf" -or
+             $Entity -eq "tb_matrix_accelerator_full_top_uart_protocol")
+        ) {
+            $genericArgs += "-gBUFFERING_MODE=$BufferingMode"
+        }
     }
 
     $vsimCommand = @(

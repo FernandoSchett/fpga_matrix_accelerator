@@ -1,3 +1,3 @@
 create_clock -name clk -period 20.000 [get_ports {clk}]
-create_generated_clock -name dram_clk -source [get_ports {clk}] [get_ports {DRAM_CLK}]
+derive_pll_clocks
 derive_clock_uncertainty

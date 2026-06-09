@@ -20,6 +20,7 @@ entity matrix_mult_sdram_tiled_core is
         SDRAM_DATA_W        : positive := 32;
         SDRAM_SIMULATION_MODEL : boolean := true;
         ACCUMULATE_C        : boolean := false;
+        BUFFERING_MODE      : string := "single";
         BASE_A_BYTES        : natural := 0;
         BASE_B_BYTES        : natural := 0;
         BASE_C_BYTES        : natural := 0;
@@ -76,6 +77,11 @@ architecture rtl of matrix_mult_sdram_tiled_core is
         return right_value;
     end function;
 
+    function is_double_buffering(mode_value : string) return boolean is
+    begin
+        return mode_value = "double";
+    end function;
+
     constant HOST_ADDR_W    : positive := clog2(N * N);
     constant LOCAL_W        : positive := clog2(TILE_SIZE);
     constant TILE_ELEMS     : positive := TILE_SIZE * TILE_SIZE;
@@ -87,6 +93,7 @@ architecture rtl of matrix_mult_sdram_tiled_core is
                                                         BASE_A_BYTES, BASE_B_BYTES, BASE_C_BYTES);
     constant TOTAL_BYTES    : natural := SELECT_BASE_C + (MATRIX_ELEMS * ACC_BYTES);
     constant EMULATED_WORDS : positive := ceil_div(TOTAL_BYTES, SDRAM_BYTES);
+    constant ENABLE_DOUBLE_BUFFERING : boolean := is_double_buffering(BUFFERING_MODE) and PANEL_TILES >= 2;
 
     type compute_state_t is (
         COMPUTE_IDLE,
@@ -109,6 +116,8 @@ architecture rtl of matrix_mult_sdram_tiled_core is
     signal sched_tile_j        : natural range 0 to (N/TILE_SIZE)-1;
     signal sched_tile_k        : natural range 0 to (N/TILE_SIZE)-1;
     signal sched_panel_count   : natural range 1 to PANEL_TILES;
+    signal sched_loader_bank_base : natural range 0 to PANEL_TILES-1;
+    signal sched_compute_bank_base : natural range 0 to PANEL_TILES-1;
     signal sched_load_c        : std_logic;
     signal sched_loader_start  : std_logic;
     signal sched_loader_done   : std_logic;
@@ -180,6 +189,7 @@ architecture rtl of matrix_mult_sdram_tiled_core is
     signal b_rd_col  : unsigned(LOCAL_W-1 downto 0) := (others => '0');
     signal b_rd_data : signed(DATA_WIDTH-1 downto 0);
     signal compute_panel_idx : natural range 0 to PANEL_TILES-1 := 0;
+    signal compute_panel_offset : natural range 0 to PANEL_TILES-1 := 0;
 
     type tile_data_array_t is array (natural range <>) of signed(DATA_WIDTH-1 downto 0);
     type std_logic_array_t is array (natural range <>) of std_logic;
@@ -336,7 +346,8 @@ begin
         generic map (
             N => N,
             TILE_SIZE => TILE_SIZE,
-            PANEL_TILES => PANEL_TILES
+            PANEL_TILES => PANEL_TILES,
+            DOUBLE_BUFFERING => ENABLE_DOUBLE_BUFFERING
         )
         port map (
             clk => clk,
@@ -348,6 +359,8 @@ begin
             tile_j => sched_tile_j,
             tile_k => sched_tile_k,
             panel_count => sched_panel_count,
+            loader_bank_base => sched_loader_bank_base,
+            compute_bank_base => sched_compute_bank_base,
             load_c => sched_load_c,
             loader_start  => sched_loader_start,
             loader_done   => sched_loader_done,
@@ -384,6 +397,7 @@ begin
             tile_j => sched_tile_j,
             tile_k => sched_tile_k,
             panel_count => sched_panel_count,
+            bank_base => sched_loader_bank_base,
             busy => loader_busy,
             done => sched_loader_done,
             mem_rd_req => loader_rd_req,
@@ -581,6 +595,7 @@ begin
             pack_idx <= 0;
             unpack_idx <= 0;
             compute_panel_idx <= 0;
+            compute_panel_offset <= 0;
             core_start <= '0';
             sched_compute_done <= '0';
             compute_c_wr_en <= '0';
@@ -606,7 +621,8 @@ begin
                 when COMPUTE_IDLE =>
                     if sched_compute_start = '1' then
                         pack_idx <= 0;
-                        compute_panel_idx <= 0;
+                        compute_panel_offset <= 0;
+                        compute_panel_idx <= sched_compute_bank_base;
                         compute_state <= PACK_SETUP;
                     end if;
 
@@ -664,8 +680,9 @@ begin
                     end if;
 
                 when COMPUTE_DONE_STATE =>
-                    if compute_panel_idx + 1 < sched_panel_count then
-                        compute_panel_idx <= compute_panel_idx + 1;
+                    if compute_panel_offset + 1 < sched_panel_count then
+                        compute_panel_offset <= compute_panel_offset + 1;
+                        compute_panel_idx <= (compute_panel_idx + 1) mod PANEL_TILES;
                         pack_idx <= 0;
                         compute_state <= PACK_SETUP;
                     else

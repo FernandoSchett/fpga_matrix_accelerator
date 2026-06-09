@@ -10,6 +10,7 @@ A migracao basica para SDRAM esta integrada:
 
 - `top/matrix_accelerator_full_top.vhd` instancia `matrix_mult_sdram_tiled_core`.
 - O top expoe portas fisicas `DRAM_*` da DE0-CV.
+- `memory/sdram_clock_pll.vhd` usa `ALTPLL` para gerar `DRAM_CLK` com phase shift no modo fisico.
 - `memory/sdram_controller_wrapper.vhd` tem dois modos:
   - `SIMULATION_MODEL=true`: memoria byte-addressed emulada para testbench.
   - `SIMULATION_MODEL=false`: controlador SDRAM fisico simples, com init, refresh, acesso 16-bit e interface 32-bit.
@@ -153,7 +154,7 @@ DONE
 
 ## Lacunas Restantes
 
-- Controlador SDRAM fisico e basico: single-beat, sem burst, sem row cache e sem PLL/phase shift dedicado para `DRAM_CLK`.
+- Controlador SDRAM fisico e basico: single-beat, sem burst e sem row cache. O `DRAM_CLK` fisico agora sai de `ALTPLL` com phase shift default de -3 ns.
 - Timing de I/O SDRAM ainda nao esta totalmente fechado no SDC; o Quartus compila, mas reporta design nao totalmente constrained.
 - `matrix_tiled_compute_core` ainda usa vetores achatados; wrapper faz pack/unpack sequencial dos M10K. Correto para funcionalidade, lento para tiles grandes.
 - `memory_manager` ainda e arbitro simples, sem filas profundas nem burst coalescing.
@@ -200,5 +201,5 @@ Para hardware robusto:
 
 - validar SDRAM fisica na placa com padrao write/read antes do acelerador;
 - fechar constraints de SDRAM I/O;
-- trocar controlador simples por IP/PLL validado, se precisar margem real;
+- trocar controlador simples por IP SDRAM gerado no Platform Designer, se precisar margem real alem do PLL atual;
 - adicionar burst/double buffering para desempenho.

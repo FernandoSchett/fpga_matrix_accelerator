@@ -13,6 +13,7 @@ entity tb_matrix_mult_tiled_core_perf is
         NUM_MACS   : positive := 2;
         DATA_WIDTH : positive := 8;
         ACC_WIDTH  : positive := 32;
+        BUFFERING_MODE : string := "single";
         MEMORY_BURST_LEN : natural := 1;
         MAC_PIPELINE_STAGES : natural := 0;
         MEMORY_BANKS_A : positive := 1;
@@ -90,6 +91,7 @@ begin
                 NUM_MACS            => NUM_MACS,
                 DATA_WIDTH          => DATA_WIDTH,
                 ACC_WIDTH           => ACC_WIDTH,
+                BUFFERING_MODE      => BUFFERING_MODE,
                 MEMORY_BURST_LEN    => MEMORY_BURST_LEN,
                 MAC_PIPELINE_STAGES => MAC_PIPELINE_STAGES,
                 MEMORY_BANKS_A      => MEMORY_BANKS_A,

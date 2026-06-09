@@ -19,6 +19,8 @@ param(
     [int]$SdramAddrWidth = 26,
     [int]$SdramDataWidth = 32,
     [string]$SdramSimulationModel = "false",
+    [string]$SdramClkPhaseShiftPs = "-3000",
+    [int]$SdramReadTimeoutCycles = 100000,
     [string]$AccumulateC = "false",
     [string]$EnableSignaltap = "false",
 
@@ -153,6 +155,8 @@ Set-DefaultFromDotEnv -Values $RootEnv -ParamName "UartFifoDepth" -EnvNames @("U
 Set-DefaultFromDotEnv -Values $RootEnv -ParamName "SdramAddrWidth" -EnvNames @("SDRAM_ADDR_W", "SDRAM_ADDR_WIDTH", "SdramAddrWidth") -Type "int"
 Set-DefaultFromDotEnv -Values $RootEnv -ParamName "SdramDataWidth" -EnvNames @("SDRAM_DATA_W", "SDRAM_DATA_WIDTH", "SdramDataWidth") -Type "int"
 Set-DefaultFromDotEnv -Values $RootEnv -ParamName "SdramSimulationModel" -EnvNames @("SDRAM_SIMULATION_MODEL", "SdramSimulationModel") -Type "string"
+Set-DefaultFromDotEnv -Values $RootEnv -ParamName "SdramClkPhaseShiftPs" -EnvNames @("SDRAM_CLK_PHASE_SHIFT_PS", "SdramClkPhaseShiftPs") -Type "string"
+Set-DefaultFromDotEnv -Values $RootEnv -ParamName "SdramReadTimeoutCycles" -EnvNames @("SDRAM_READ_TIMEOUT_CYCLES", "SdramReadTimeoutCycles") -Type "int"
 Set-DefaultFromDotEnv -Values $RootEnv -ParamName "AccumulateC" -EnvNames @("ACCUMULATE_C", "AccumulateC") -Type "string"
 Set-DefaultFromDotEnv -Values $RootEnv -ParamName "EnableSignaltap" -EnvNames @("ENABLE_SIGNALTAP", "EnableSignaltap") -Type "string"
 Set-DefaultFromDotEnv -Values $RootEnv -ParamName "Clean" -EnvNames @("CLEAN", "Clean") -Type "switch"
@@ -425,6 +429,7 @@ Assert-PositiveInt -Name "ClkFreqHz" -Value $ClkFreqHz
 Assert-PositiveInt -Name "UartFifoDepth" -Value $UartFifoDepth
 Assert-PositiveInt -Name "SdramAddrWidth" -Value $SdramAddrWidth
 Assert-PositiveInt -Name "SdramDataWidth" -Value $SdramDataWidth
+Assert-PositiveInt -Name "SdramReadTimeoutCycles" -Value $SdramReadTimeoutCycles
 
 if (($N % $TileSize) -ne 0) {
     throw "N precisa ser multiplo de TileSize. N=$N TileSize=$TileSize"
@@ -458,6 +463,8 @@ $generics = @{
     "SDRAM_ADDR_W"        = $SdramAddrWidth
     "SDRAM_DATA_W"        = $SdramDataWidth
     "SDRAM_SIMULATION_MODEL" = $SdramSimulationModel
+    "SDRAM_CLK_PHASE_SHIFT_PS" = $SdramClkPhaseShiftPs
+    "SDRAM_READ_TIMEOUT_CYCLES" = $SdramReadTimeoutCycles
     "ACCUMULATE_C"        = $AccumulateC
     "ENABLE_SIGNALTAP"    = $EnableSignaltap
 }

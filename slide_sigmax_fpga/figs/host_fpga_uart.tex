@@ -1,0 +1,53 @@
+\definecolor{hostOrange}{RGB}{255, 225, 190}
+\definecolor{fpgaBlue}{RGB}{210, 240, 245}
+\definecolor{hostBorder}{RGB}{220, 110, 20}
+\definecolor{fpgaBorder}{RGB}{20, 120, 150}
+
+\begin{tikzpicture}[
+    block/.style={
+        rectangle,
+        rounded corners,
+        draw,
+        very thick,
+        align=center,
+        minimum width=5cm,
+        minimum height=3cm,
+        font=\large\bfseries
+    },
+    arrow/.style={
+        -{Latex[length=3mm]},
+        very thick
+    },
+    label/.style={
+        font=\small,
+        fill=white,
+        inner sep=2pt,
+        align=center
+    }
+]
+
+\node[block, fill=hostOrange, draw=hostBorder] (host) at (0,0)
+{Computador\\Host};
+
+\node[block, fill=fpgaBlue, draw=fpgaBorder] (fpga) at (9,0)
+{FPGA\\Acelerador};
+
+\draw[arrow]
+([yshift=0.65cm]host.east)
+to[out=25, in=155]
+node[label, midway, above=4pt]
+{Matriz A e Matriz B}
+node[label, midway, below=4pt]
+{\textit{UART}}
+([yshift=0.65cm]fpga.west);
+
+\draw[arrow]
+([yshift=-0.65cm]fpga.west)
+to[out=205, in=-25]
+node[label, midway, above=4pt]
+{\textit{UART}}
+node[label, midway, below=4pt]
+{Matriz C = A $\times$ B}
+([yshift=-0.65cm]host.east);
+
+\end{tikzpicture}

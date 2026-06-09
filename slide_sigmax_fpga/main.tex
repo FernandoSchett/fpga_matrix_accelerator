@@ -1,0 +1,760 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Beamer Presentation
+% Acelerador de Multiplicação de Matrizes em FPGA
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\documentclass{beamer}
+
+\mode<presentation>{
+\usetheme{Madrid}
+
+\definecolor{customorange}{RGB}{255, 140, 0}
+\definecolor{customgreen}{RGB}{200, 245, 210}
+\setbeamercolor{structure}{fg=customorange}
+\setbeamercolor{item}{fg=customorange}
+}
+
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage[table]{xcolor}
+\usepackage[brazilian]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb}
+\usepackage{url}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit,calc}
+
+\usepackage[
+    backend=biber,
+    style=numeric-comp,
+    sorting=none,
+    autocite=superscript
+]{biblatex}
+
+\addbibresource{refs.bib}
+
+% Figuras numeradas automaticamente no Beamer
+\setbeamertemplate{caption}[numbered]
+
+% Fonte menor para a bibliografia
+\renewcommand*{\bibfont}{\tiny}
+
+% Figura opcional: se o arquivo existir, inclui; se não existir, mostra uma caixa indicando o caminho
+\newcommand{\optionalfigurecaption}[4]{%
+\begin{figure}
+\centering
+\IfFileExists{#1}{%
+    \includegraphics[width=#2\linewidth]{#1}%
+}{%
+    \fbox{\parbox[c][0.30\textheight][c]{0.85\linewidth}{\centering Insira aqui a figura: \texttt{\detokenize{#1}}}}%
+}%
+\caption{#3}
+\label{#4}
+\end{figure}
+}
+
+\newcommand{\optionaltikz}[2]{%
+\IfFileExists{#1}{%
+    \resizebox{#2\linewidth}{!}{\input{#1}}%
+}{%
+    \fbox{\parbox[c][0.20\textheight][c]{#2\linewidth}{\centering Insira aqui o TikZ: \texttt{\detokenize{#1}}}}%
+}%
+}
+
+\title[Acelerador FPGA]{Acelerador Parametrizável para Multiplicação de Matrizes em FPGA}
+\subtitle{Estudo de caso usando DE0-CV e comunicação UART}
+\author{Fernando Schettini \\ \textit{fernandoschettini@outlook.com}}
+\institute[]{Estudo de caso e metodologia para exploração arquitetural em FPGA}
+\date{2026}
+
+\begin{document}
+
+% ---------------------------------------------------------
+% CAPA
+% ---------------------------------------------------------
+
+\begin{frame}
+\titlepage
+\end{frame}
+
+\begin{frame}
+\frametitle{Introdução - Motivação}
+
+\begin{itemize}
+    \item FPGAs são alternativas para offloading em sistemas embarcados e de borda, mas o desenvolvimento de aceleradores ainda depende de fluxos, plataformas e integrações específicas\supercite{haris2021secda,haris2023secdatflite}.
+    
+    \item Este trabalho explora uma arquitetura simples, parametrizável e mensurável para aceleração em FPGA de pequeno porte, composta por comunicação host-FPGA, armazenamento externo, buffers internos, unidades MAC e contadores de desempenho.
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Introdução - Por que multiplicação de matrizes?}
+
+\begin{itemize}
+    \item A multiplicação de matrizes é um kernel recorrente em IA, processamento de sinais e computação científica; em deep learning, operações do tipo GEMM aparecem em camadas densas, convolucionais e recorrentes\supercite{nvidia2023gemm}.
+    
+    \item O uso de matrizes \(128 \times 128\) com operandos INT8 representa uma carga compatível com inferência embarcada, em que a quantização inteira reduz tráfego de memória, latência e consumo de energia\supercite{tensorflow2022quantization}.
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Introdução - Objetivo}
+
+\begin{itemize}
+    \item Desenvolver um acelerador parametrizável de multiplicação de matrizes em FPGA usando a placa DE0-CV.
+    \item Usar o PC como host, enviando matrizes para a FPGA por UART.
+    \item Usar a FPGA como coprocessador para executar o cálculo.
+\end{itemize}
+
+\vspace{0.20cm}
+
+\begin{center}
+\optionaltikz{figs/host_fpga_uart.tex}{0.82}
+\end{center}
+
+\end{frame}
+
+% =========================================================
+\section{Fundamentação Teórica}
+% =========================================================
+
+\begin{frame}
+\frametitle{Fundamentação Teórica - Definição do Problema}
+
+\optionalfigurecaption
+{figs/mac_parallel.jpeg}
+{0.55}
+{Representação conceitual de unidades de multiplicação e acumulação.}
+{fig:mac-parallel}
+
+\begin{itemize}
+    \item Para duas matrizes $A$ e $B$, a matriz resultado $C$ é calculada por:
+\end{itemize}
+
+\[
+    C_{ij} = \sum_{k=0}^{N-1} A_{ik}B_{kj}
+\]
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Fundamentação Teórica - LABs, ALMs e caminhos locais}
+
+\begin{columns}
+\column{0.48\textwidth}
+\optionalfigurecaption
+{figs/lab_fast_local.png}
+{0.85}
+{Estrutura de LAB no Cyclone V\supercite{altera2023cyclonev}.}
+{fig:lab}
+
+\column{0.48\textwidth}
+\optionalfigurecaption
+{figs/alm_block.png}
+{0.85}
+{Estrutura de ALM no Cyclone V\supercite{altera2023cyclonev}.}
+{fig:alm}
+\end{columns}
+
+\vspace{0.1cm}
+
+\begin{itemize}
+    \item LABs agrupam ALMs e interconexões locais\supercite{altera2023cyclonev}.
+    \item ALMs implementam LUTs, registradores, somadores e caminhos de carry\supercite{altera2023cyclonev}.
+    \item \textit{Logic element} é uma unidade lógica composta por LUT de quatro entradas, registrador programável e cadeia de carry\supercite{intel2017logicelement}.
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Fundamentação Teórica - Interconexões no Cyclone V}
+
+\optionalfigurecaption
+{figs/cyclonev_interconnects.png}
+{0.70}
+{Interconexões locais, diretas, por linha e por coluna no Cyclone V\supercite{altera2023cyclonev}.}
+{fig:cyclonev-interconnects}
+
+\vspace{0.1cm}
+
+\begin{itemize}
+    \item As interconexões locais, diretas, por linha e por coluna afetam o roteamento do circuito\supercite{altera2023cyclonev}.
+    \item O roteamento pode se tornar um limite antes mesmo de todos os recursos lógicos serem usados.
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Fundamentação Teórica - PLLs}
+
+\begin{itemize}
+    \item PLLs permitem gerar clocks internos a partir do clock base da placa.
+    \item São usados para ajustar a frequência de operação da lógica do acelerador e da interface SDRAM.
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Fundamentação Teórica - DSPs}
+
+\begin{itemize}
+    \item DSPs são blocos especializados para operações aritméticas, principalmente multiplicações.
+    \item Neste trabalho, eles são explorados por meio de unidades MAC paralelas.
+\end{itemize}
+
+\vspace{0.15cm}
+
+\optionalfigurecaption
+{figs/dsp.png}
+{0.60}
+{Diagrama interno de um bloco DSP de precisão variável no Cyclone V\protect\supercite{altera2023cyclonev}.}
+{fig:dsp-block}
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Fundamentação Teórica - Modos de operação dos DSPs}
+
+\begin{table}
+\centering
+\tiny
+\caption{Modos de operação dos blocos DSP de precisão variável no Cyclone V\protect\supercite{altera2023cyclonev}.}
+\label{tab:dsp-modes}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{llllll}
+\toprule
+\textbf{Recurso} & \textbf{Modo} & \textbf{Instâncias} & \textbf{Pre-adder} & \textbf{Coeficiente} & \textbf{Chainout} \\
+\midrule
+1 DSP & 9 $\times$ 9 independente & 3 & Não & Não & Não \\
+1 DSP & 18 $\times$ 18 independente & 2 & Sim & Sim & Não \\
+1 DSP & 18 $\times$ 19 independente & 2 & Sim & Sim & Não \\
+1 DSP & 18 $\times$ 25 independente & 1 & Sim & Sim & Sim \\
+1 DSP & 20 $\times$ 24 independente & 1 & Sim & Sim & Sim \\
+1 DSP & 27 $\times$ 27 independente & 1 & Sim & Sim & Sim \\
+1 DSP & Dois 18 $\times$ 19 em modo adder & 1 & Sim & Sim & Sim \\
+1 DSP & 18 $\times$ 18 somado com entrada de 36 bits & 1 & Sim & Não & Sim \\
+2 DSPs & Multiplicação complexa 18 $\times$ 19 & 1 & Não & Não & Não \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Fundamentação Teórica - Memória}
+
+\begin{itemize}
+    \item Blocos M10K são memórias embarcadas internas da FPGA dentro do chip.
+    \item SDRAM é memória externa à FPGA, usada como armazenamento principal de maior capacidade.
+    \item A arquitetura usa SDRAM para matrizes completas e M10K como buffers locais de tiles.
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Fundamentação Teórica - Recursos da DE0-CV}
+
+\begin{itemize}
+    \item A placa DE0-CV tem FPGA \textbf{Cyclone V 5CEBA4F23C7N}\supercite{terasic2015de0cv}.
+    \item \textbf{49 mil} elementos lógicos programáveis, \textbf{18.480} Adaptive Logic Modules e \textbf{3080 Kbits} de memória embarcada\supercite{terasic2015de0cv}.
+    \item 66 DSPs\supercite{terasic2015de0cv}.
+    \item 4 PLLs fracionários\supercite{terasic2015de0cv}.
+    \item 64 MB de SDRAM externa, com barramento de dados de 16 bits\supercite{terasic2015de0cv}.
+\end{itemize}
+
+\end{frame}
+
+% =========================================================
+\section{Metodologia}
+% =========================================================
+
+\begin{frame}
+\frametitle{Metodologia - Compute Unit}
+
+\begin{itemize}
+    \item Multiplicação densa de matrizes inteiras:
+    \[
+        C = A \times B
+    \]
+    \item Entradas \(A\) e \(B\) em \textbf{INT8}; acumulador e saída \(C\) em \textbf{INT32}.
+    \item Kernel baseado em tiles e parametrizado por \texttt{TILE\_SIZE}, \texttt{NUM\_MACS}, \texttt{DATA\_WIDTH} e \texttt{ACC\_WIDTH}.
+    \item Uso de MACs paralelas para explorar os DSPs da FPGA.
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Metodologia - Fluxo local de cálculo}
+
+\begin{itemize}
+    \item Carregar tile de \(A\).
+    \item Carregar tile de \(B\).
+    \item Acumular os produtos no tile de \(C\).
+    \item Escrever o resultado parcial ou final.
+\end{itemize}
+
+\vspace{0.15cm}
+
+\begin{columns}[T]
+\column{0.48\textwidth}
+\centering
+\optionaltikz{figs/compute_unit_io.tex}{1.0}
+
+\vspace{0.1cm}
+{\scriptsize \textbf{(a)} Interface externa da \texttt{compute\_unit\_top}.}
+
+\column{0.48\textwidth}
+\centering
+\optionaltikz{figs/compute_unit_inside.tex}{1.0}
+
+\vspace{0.1cm}
+{\scriptsize \textbf{(b)} Organização interna da \texttt{compute\_unit\_top}.}
+\end{columns}
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Metodologia - Otimização da Compute Unit}
+
+\begin{itemize}
+    \item A primeira fase otimiza apenas a compute unit.
+    \item Objetivo: encontrar a configuração com maior GOPS efetivo.
+    \item Cada experimento pertence a uma tupla discreta:
+    \[
+        (\texttt{TILE\_SIZE},\ \texttt{NUM\_MACS},\ \texttt{MAC\_PIPELINE\_STAGES})
+    \]
+    \item Foram avaliados:
+    \begin{itemize}
+        \item \texttt{TILE\_SIZE} em \(\{2,4,8,16\}\);
+        \item \texttt{NUM\_MACS} em \(\{1,2,4,8,16,32,64\}\), conforme o tamanho do tile;
+        \item \texttt{MAC\_PIPELINE\_STAGES} em \(\{0,1,2\}\), nas configurações selecionadas.
+    \end{itemize}
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Metodologia - Como o GOPS é calculado}
+
+\begin{itemize}
+    \item Para matriz quadrada \(N \times N\), usa-se a aproximação:
+    \[
+        ops_{approx} = 2N^3
+    \]
+
+    \item Para \(N=128\):
+    \[
+        ops_{approx}=2\times128^3=4.194.304\ \text{operações}
+    \]
+
+    \item Tempo de execução interno:
+    \[
+        exec\_time = \frac{exec\_cycles}{f_{max}}
+    \]
+
+    \item GOPS efetivo:
+    \[
+        GOPS_{eff}=\frac{ops_{approx}}{exec\_time\times10^9}
+    \]
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Metodologia - Fluxo experimental}
+
+\begin{itemize}
+    \item Para cada configuração, o fluxo automatizado executa:
+    \begin{itemize}
+        \item simulação;
+        \item compilação no Quartus;
+        \item extração de Fmax;
+        \item extração de ALMs, DSPs e memória;
+        \item geração de CSV final para comparação.
+    \end{itemize}
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Metodologia - Organização de Memória}
+
+\begin{itemize}
+    \item As matrizes completas são armazenadas na SDRAM externa.
+    \item Os tiles locais são armazenados em memórias internas M10K.
+    \item A SDRAM atua como memória principal.
+    \item As M10K funcionam como buffers rápidos próximos ao compute core.
+    \item Organização em \textit{row-major}:
+    \[
+        addr = base + row \times N + col
+    \]
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Metodologia - Espaços de memória}
+
+\begin{itemize}
+    \item O espaço de endereçamento é dividido em regiões separadas para:
+    \begin{itemize}
+        \item matriz \(A\);
+        \item matriz \(B\);
+        \item matriz \(C\).
+    \end{itemize}
+    \item Essa separação simplifica o controle de leitura, escrita e validação dos resultados.
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Metodologia - Otimização de Memória}
+
+\begin{itemize}
+    \item Segunda fase do \texttt{parameter\_optimization}.
+    \item Objetivo: avaliar o impacto da organização de memória no desempenho final.
+    \item Cada experimento pertence a uma tupla discreta:
+    \[
+        (\texttt{MEMORY\_BURST\_LEN},\ \texttt{BUFFERING\_MODE},\ 
+        \texttt{MEMORY\_BANKS\_A},\ \texttt{MEMORY\_BANKS\_B})
+    \]
+    \item A varredura avalia 9 configurações pré-definidas.
+    \item O modo \texttt{single} foi testado com 1 banco por matriz; o modo \texttt{double} foi testado com 2 ou 4 bancos.
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Metodologia - Critérios de comparação}
+
+\begin{itemize}
+    \item As configurações são comparadas por:
+    \begin{itemize}
+        \item GOPS efetivo;
+        \item Fmax;
+        \item uso de ALMs;
+        \item uso de DSPs;
+        \item uso de memória interna;
+        \item pressão de roteamento.
+    \end{itemize}
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Metodologia - Otimizações Implementadas}
+
+\begin{itemize}
+    \item Parametrização da arquitetura por generics.
+    \item Separação entre top-level, compute, memória, controle e UART.
+    \item Uso de SDRAM externa para matrizes completas.
+    \item Uso de M10K como buffers locais de tiles.
+    \item Uso de FIFO na UART para reduzir perda de bytes.
+    \item PLL para clock da SDRAM.
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Metodologia - Otimizações Implementadas}
+
+\begin{itemize}
+    \item Leitura de \(C\) por checksum para reduzir o gargalo da UART.
+    \item Suporte a \textit{single buffering} e \textit{double buffering}.
+    \item Scripts automáticos para sweeps e coleta de métricas.
+    \item Geração de CSV, gráficos e relatórios comparativos.
+\end{itemize}
+
+\end{frame}
+
+% =========================================================
+\section{Resultados e Discussões}
+% =========================================================
+
+\begin{frame}
+\frametitle{Resultados - Top 3 da Compute Unit}
+
+\begin{table}
+\centering
+\tiny
+\caption{Melhores configurações do sweep \texttt{compute\_unit\_only}, ordenadas por \(GOPS_{eff}\) aproximado.}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{ccccccccc}
+\toprule
+\textbf{Run} & \textbf{Tile} & \textbf{MACs} & \textbf{Pipe} & \textbf{Fmax} & \textbf{DSPs} & \textbf{ALMs} & \textbf{GOPS} & \textbf{Risco} \\
+\midrule
+run\_013 & 16 & 64 & 0 & 65,13 MHz & 64 & 8144 & \textbf{7,9629} & alto \\
+run\_017 & 16 & 64 & 1 & 74,68 MHz & 64 & 8156 & 7,3705 & alto \\
+run\_018 & 16 & 64 & 2 & 79,23 MHz & 64 & 8148 & 6,5558 & alto \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\vspace{0.1cm}
+\begin{itemize}
+    \item O melhor desempenho puro veio de \texttt{TILE\_SIZE=16} e \texttt{NUM\_MACS=64}.
+    \item Essa configuração usa praticamente todos os DSPs disponíveis e apresenta maior pressão de roteamento.
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Resultados - Top 3 do acelerador completo}
+
+\begin{table}
+\centering
+\tiny
+\caption{Melhores configurações do sweep com SDRAM/top completo. A linha verde indica a configuração escolhida para teste na placa.}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{ccccccccc}
+\toprule
+\textbf{Run} & \textbf{Buffer} & \textbf{Burst} & \textbf{Bancos A} & \textbf{Bancos B} & \textbf{Fmax} & \textbf{ALMs} & \textbf{Mem. bits} & \textbf{GOPS} \\
+\midrule
+\rowcolor{customgreen}
+run\_005 & double & 4  & 2 & 2 & 72,00 MHz & 3433 & 68608  & \textbf{0,1613} \\
+run\_006 & double & 8  & 2 & 2 & 72,00 MHz & 3433 & 68608  & 0,1613 \\
+run\_007 & double & 16 & 2 & 2 & 72,00 MHz & 3433 & 68608  & 0,1613 \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\vspace{0.1cm}
+\begin{itemize}
+    \item Configuração escolhida: \texttt{N=128}, \texttt{TILE\_SIZE=8}, \texttt{NUM\_MACS=32}, \texttt{double buffering}, \texttt{MEMORY\_BURST\_LEN=4}, 2 bancos para A e 2 bancos para B.
+    \item O melhor compute puro não foi escolhido diretamente porque o teste final inclui controle, SDRAM e UART.
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Resultados - Sweep previsto versus placa}
+
+\begin{table}
+\centering
+\small
+\caption{Comparação entre o resultado previsto pelo sweep e a execução real da \texttt{run\_20260609\_143308}.}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lccc}
+\toprule
+\textbf{Métrica} & \textbf{Sweep full/top} & \textbf{Medição interna na placa} & \textbf{Fim-a-fim com UART} \\
+\midrule
+GOPS & 0,1613 & 0,0569 & 0,00125 \\
+Percentual do previsto & 100\% & 35,3\% & 0,77\% \\
+Clock usado & 72 MHz & 50 MHz & 50 MHz + UART \\
+Ciclos internos & 1.872.130 & 3.684.540 & -- \\
+Tempo medido & 26,00 ms & 73,69 ms & 16,84 s \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\vspace{0.05cm}
+\begin{itemize}
+    \item A queda para 35,3\% do previsto vem de dois fatores: clock real menor e quase 2 vezes mais ciclos internos.
+    \item A queda fim-a-fim é dominada pela UART, pois o tempo inclui carregamento e retorno dos dados pelo host.
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Resultados - De onde vem a diferença de GOPS?}
+
+\begin{columns}[T]
+\column{0.48\textwidth}
+\begin{block}{Modelo do sweep}
+\begin{itemize}
+    \item \(f_{max}=72\) MHz.
+    \item \(exec\_cycles=1.872.130\).
+    \item \(GOPS_{eff}=0,1613\).
+\end{itemize}
+\end{block}
+
+\column{0.48\textwidth}
+\begin{block}{Execução na placa}
+\begin{itemize}
+    \item Clock real: 50 MHz.
+    \item Ciclos reais: 3.684.540.
+    \item \(GOPS_{interno}=0,0569\).
+\end{itemize}
+\end{block}
+\end{columns}
+
+\vspace{0.2cm}
+\[
+    \frac{50}{72} \times \frac{1.872.130}{3.684.540}
+    \approx 0,353
+\]
+
+\begin{itemize}
+    \item Portanto, o desempenho interno medido corresponde a cerca de 35\% do valor previsto no sweep.
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Resultados - Comparação contextual com Raspberry Pi}
+
+\begin{table}
+\centering
+\tiny
+\caption{Comparação de ordem de grandeza. A linha do Raspberry Pi é referência externa de HPL/OpenBLAS em FP, não uma comparação direta com INT8.}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lcccl}
+\toprule
+\textbf{Sistema / métrica} & \textbf{Tipo} & \textbf{Valor} & \textbf{Contra fim-a-fim UART} & \textbf{Observação} \\
+\midrule
+Compute unit FPGA, melhor sweep & INT8/INT32 & 7,9629 GOPS & 6370x & Sem SDRAM/UART \\
+Acelerador completo, sweep & INT8/INT32 & 0,1613 GOPS & 129x & Modelo top completo \\
+Acelerador na placa, interno & INT8/INT32 & 0,0569 GOPS & 45,5x & Sem contar transferência total \\
+Acelerador fim-a-fim UART & INT8/INT32 & 0,00125 GOPS & 1x & Inclui comunicação UART \\
+Raspberry Pi 5, HPL/OpenBLAS & FP / HPL & 24--25 GFLOP/s & 19.200x--20.000x & Referência contextual\supercite{rpi5hpl} \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\vspace{0.05cm}
+\begin{itemize}
+    \item A Raspberry Pi 5 usa CPU Broadcom BCM2712 quad-core Arm Cortex-A76 a 2,4 GHz\supercite{raspberrypi5official}.
+    \item A comparação mostra que o gargalo atual não é só a compute unit, mas o sistema completo com UART e validação.
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Resultados - Por que o GOPS real ficou abaixo do esperado?}
+
+\small
+
+\begin{itemize}
+    \item O sweep estimou a melhor configuração full/top com:
+    \[
+        GOPS_{sweep} = 0{,}1613
+    \]
+
+    \item Na placa, o clock real foi menor:
+    \[
+        \frac{50}{72} = 0{,}694
+    \]
+
+    \item A execução real também gastou mais ciclos:
+    \[
+        \frac{1.872.130}{3.684.540} = 0{,}508
+    \]
+
+    \item A queda observada é explicada por:
+    \[
+        0{,}694 \times 0{,}508 = 0{,}353
+    \]
+\end{itemize}
+
+\vspace{0.1cm}
+
+\begin{center}
+\begin{tabular}{lc}
+\toprule
+\textbf{Métrica} & \textbf{Valor} \\
+\midrule
+GOPS esperado no sweep & 0,1613 \\
+GOPS interno medido & 0,0569 \\
+Percentual atingido & 35,3\% \\
+GOPS fim-a-fim com UART & 0,00125 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\vspace{0.05cm}
+
+{\scriptsize
+A run ainda não deve ser tratada como resultado final publicável, pois falhou validação:
+\texttt{validation\_passed = false}, com 5 erros de checksum.
+}
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Discussão - Gargalos observados}
+
+\begin{itemize}
+    \item A UART não é adequada para alto throughput de dados.
+    \item A leitura completa de \(C\) pela UART se torna gargalo em matrizes grandes.
+    \item O uso de checksum reduz o tempo de validação no host.
+    \item O gargalo final pode migrar entre compute, memória e comunicação, dependendo da configuração.
+\end{itemize}
+
+\end{frame}
+
+% =========================================================
+\section{Conclusões e Prospecções}
+% =========================================================
+
+\begin{frame}
+\frametitle{Conclusões}
+
+\begin{itemize}
+    \item Foi desenvolvido um acelerador parametrizável para multiplicação de matrizes inteiras em FPGA.
+    \item A arquitetura permite avaliar diferentes configurações de compute e memória.
+    \item O fluxo experimental automatiza simulação, síntese, coleta de métricas e comparação.
+    \item A separação modular facilita a evolução do projeto.
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Prospecções}
+
+\begin{itemize}
+    \item Trocar a UART por uma interface de maior throughput.
+    \item Criar uma interface padronizada para kernels.
+    \item Permitir trocar o kernel sem reescrever controle e memória.
+    \item Investigar se o gargalo principal está na memória, no protocolo ou no compute.
+    \item Evoluir o uso de \textit{double buffering}.
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Prospecções - Acelerador como serviço}
+
+\begin{itemize}
+    \item Suportar múltiplos computadores ou clientes acessando o acelerador.
+    \item Adicionar escalonamento de requisições.
+    \item Adicionar isolamento entre usuários.
+    \item Evoluir de um acelerador dedicado para uma infraestrutura compartilhável.
+\end{itemize}
+
+\end{frame}
+
+% =========================================================
+\section{Referências}
+% =========================================================
+
+\begin{frame}[allowframebreaks]
+\frametitle{Referências}
+\nocite{*}
+\printbibliography
+\end{frame}
+
+% ---------------------------------------------------------
+% FINAL
+% ---------------------------------------------------------
+
+\begin{frame}
+\Large{\centerline{Obrigado pela presença!}}
+\Large{\centerline{Perguntas?}}
+
+\vspace{0.5cm}
+
+\centering
+{\small Fernando Schettini \\ \color{blue}fernandoschettini@outlook.com}
+
+\end{frame}
+
+\end{document}

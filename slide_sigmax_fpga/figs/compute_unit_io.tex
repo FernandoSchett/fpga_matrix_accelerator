@@ -1,0 +1,54 @@
+\begin{tikzpicture}[
+    >=Latex,
+    block/.style={
+        rectangle,
+        rounded corners,
+        draw=orange!80!black,
+        very thick,
+        fill=orange!15,
+        minimum width=5.8cm,
+        minimum height=5.0cm,
+        align=center,
+        font=\small
+    },
+    lab/.style={
+        font=\scriptsize,
+        fill=white,
+        inner sep=1.5pt
+    },
+    ioarrow/.style={
+        -{Latex[length=2.5mm]},
+        thick
+    }
+]
+
+% Bloco principal
+\node[block] (cu) at (0,0)
+{\texttt{compute\_unit\_top}\\[0.2cm]
+\scriptsize
+};
+
+% Entradas à esquerda
+\draw[ioarrow] (-4.0,1.6) -- (-2.95,1.6)
+node[midway, above, lab]{\texttt{clk}};
+
+\draw[ioarrow] (-4.0,0.8) -- (-2.95,0.8)
+node[midway, above, lab]{\texttt{rst}};
+
+\draw[ioarrow] (-4.0,0.0) -- (-2.95,0.0)
+node[midway, above, lab]{\texttt{start}};
+
+% Saídas à direita
+\draw[ioarrow] (2.95,1.2) -- (4.35,1.2)
+node[midway, above, lab]{\texttt{busy}};
+
+\draw[ioarrow] (2.95,0.4) -- (4.35,0.4)
+node[midway, above, lab]{\texttt{done}};
+
+\draw[ioarrow] (2.95,-0.4) -- (4.35,-0.4)
+node[midway, above, lab]{\texttt{result\_probe[31:0]}};
+
+\draw[ioarrow] (2.95,-1.2) -- (4.35,-1.2)
+node[midway, above, lab]{\texttt{mac\_ops\_issued[31:0]}};
+
+\end{tikzpicture}

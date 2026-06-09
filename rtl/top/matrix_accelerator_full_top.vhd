@@ -27,6 +27,7 @@ entity matrix_accelerator_full_top is
         SDRAM_DATA_W        : positive := 32;
         SDRAM_SIMULATION_MODEL : boolean := false;
         SDRAM_CLK_PHASE_SHIFT_PS : string := "-3000";
+        SDRAM_READ_TIMEOUT_CYCLES : positive := 100000;
         ACCUMULATE_C        : boolean := false;
         ENABLE_SIGNALTAP    : boolean := true
     );
@@ -358,6 +359,7 @@ begin
             SDRAM_ADDR_W        => SDRAM_ADDR_W,
             SDRAM_DATA_W        => SDRAM_DATA_W,
             SDRAM_SIMULATION_MODEL => SDRAM_SIMULATION_MODEL,
+            SDRAM_READ_TIMEOUT_CYCLES => SDRAM_READ_TIMEOUT_CYCLES,
             ACCUMULATE_C        => ACCUMULATE_C,
             BUFFERING_MODE      => BUFFERING_MODE,
             MAC_PIPELINE_STAGES => MAC_PIPELINE_STAGES

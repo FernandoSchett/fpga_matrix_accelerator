@@ -97,18 +97,12 @@ architecture rtl of matrix_mult_sdram_tiled_core is
 
     type compute_state_t is (
         COMPUTE_IDLE,
-        PACK_SETUP,
-        PACK_WAIT,
-        PACK_CAPTURE,
-        START_CORE,
-        WAIT_CORE,
-        UNPACK_WRITE,
+        START_ENGINE,
+        WAIT_ENGINE,
         COMPUTE_DONE_STATE
     );
 
     signal compute_state : compute_state_t := COMPUTE_IDLE;
-    signal pack_idx      : natural range 0 to TILE_ELEMS-1 := 0;
-    signal unpack_idx    : natural range 0 to TILE_ELEMS-1 := 0;
 
     signal sched_busy          : std_logic;
     signal sched_done          : std_logic;
@@ -182,25 +176,28 @@ architecture rtl of matrix_mult_sdram_tiled_core is
     signal loader_c_wr_col  : unsigned(LOCAL_W-1 downto 0);
     signal loader_c_wr_data : signed(ACC_WIDTH-1 downto 0);
 
-    signal a_rd_row  : unsigned(LOCAL_W-1 downto 0) := (others => '0');
-    signal a_rd_col  : unsigned(LOCAL_W-1 downto 0) := (others => '0');
-    signal a_rd_data : signed(DATA_WIDTH-1 downto 0);
-    signal b_rd_row  : unsigned(LOCAL_W-1 downto 0) := (others => '0');
-    signal b_rd_col  : unsigned(LOCAL_W-1 downto 0) := (others => '0');
-    signal b_rd_data : signed(DATA_WIDTH-1 downto 0);
     signal compute_panel_idx : natural range 0 to PANEL_TILES-1 := 0;
     signal compute_panel_offset : natural range 0 to PANEL_TILES-1 := 0;
 
     type tile_data_array_t is array (natural range <>) of signed(DATA_WIDTH-1 downto 0);
     type std_logic_array_t is array (natural range <>) of std_logic;
 
-    signal a_rd_data_bank : tile_data_array_t(0 to PANEL_TILES-1);
-    signal b_rd_data_bank : tile_data_array_t(0 to PANEL_TILES-1);
-    signal a_wr_en_bank   : std_logic_array_t(0 to PANEL_TILES-1);
-    signal b_wr_en_bank   : std_logic_array_t(0 to PANEL_TILES-1);
+    constant AB_BUFFER_COPIES : positive := PANEL_TILES * NUM_MACS;
 
-    signal pack_c_rd_row : unsigned(LOCAL_W-1 downto 0) := (others => '0');
-    signal pack_c_rd_col : unsigned(LOCAL_W-1 downto 0) := (others => '0');
+    signal a_rd_data_bank : tile_data_array_t(0 to AB_BUFFER_COPIES-1);
+    signal b_rd_data_bank : tile_data_array_t(0 to AB_BUFFER_COPIES-1);
+    signal a_wr_en_bank   : std_logic_array_t(0 to AB_BUFFER_COPIES-1);
+    signal b_wr_en_bank   : std_logic_array_t(0 to AB_BUFFER_COPIES-1);
+
+    signal engine_a_rd_row_flat  : std_logic_vector((NUM_MACS*LOCAL_W)-1 downto 0);
+    signal engine_a_rd_col_flat  : std_logic_vector((NUM_MACS*LOCAL_W)-1 downto 0);
+    signal engine_a_rd_data_flat : std_logic_vector((NUM_MACS*DATA_WIDTH)-1 downto 0);
+    signal engine_b_rd_row_flat  : std_logic_vector((NUM_MACS*LOCAL_W)-1 downto 0);
+    signal engine_b_rd_col_flat  : std_logic_vector((NUM_MACS*LOCAL_W)-1 downto 0);
+    signal engine_b_rd_data_flat : std_logic_vector((NUM_MACS*DATA_WIDTH)-1 downto 0);
+    signal engine_c_rd_row : unsigned(LOCAL_W-1 downto 0);
+    signal engine_c_rd_col : unsigned(LOCAL_W-1 downto 0);
+
     signal writer_c_rd_row : unsigned(LOCAL_W-1 downto 0);
     signal writer_c_rd_col : unsigned(LOCAL_W-1 downto 0);
     signal c_rd_row_mux : unsigned(LOCAL_W-1 downto 0);
@@ -216,12 +213,8 @@ architecture rtl of matrix_mult_sdram_tiled_core is
     signal c_wr_col_mux  : unsigned(LOCAL_W-1 downto 0);
     signal c_wr_data_mux : signed(ACC_WIDTH-1 downto 0);
 
-    signal core_start : std_logic := '0';
-    signal core_done  : std_logic;
-    signal core_a_tile : std_logic_vector((TILE_ELEMS*DATA_WIDTH)-1 downto 0) := (others => '0');
-    signal core_b_tile : std_logic_vector((TILE_ELEMS*DATA_WIDTH)-1 downto 0) := (others => '0');
-    signal core_c_tile_in  : std_logic_vector((TILE_ELEMS*ACC_WIDTH)-1 downto 0) := (others => '0');
-    signal core_c_tile_out : std_logic_vector((TILE_ELEMS*ACC_WIDTH)-1 downto 0);
+    signal engine_start : std_logic := '0';
+    signal engine_done  : std_logic;
     signal core_mac_ops_issued : unsigned(31 downto 0);
 
     function local_row(idx : natural) return natural is
@@ -261,11 +254,9 @@ begin
     host_cmd_ready <= host_accept_ready;
     mac_ops_issued <= resize(core_mac_ops_issued, mac_ops_issued'length);
     memory_error <= sdram_error;
-    a_rd_data <= a_rd_data_bank(compute_panel_idx);
-    b_rd_data <= b_rd_data_bank(compute_panel_idx);
 
-    c_rd_row_mux <= writer_c_rd_row when writer_busy = '1' else pack_c_rd_row;
-    c_rd_col_mux <= writer_c_rd_col when writer_busy = '1' else pack_c_rd_col;
+    c_rd_row_mux <= writer_c_rd_row when writer_busy = '1' else engine_c_rd_row;
+    c_rd_col_mux <= writer_c_rd_col when writer_busy = '1' else engine_c_rd_col;
 
     c_wr_en_mux   <= compute_c_wr_en or loader_c_wr_en;
     c_wr_row_mux  <= compute_c_wr_row when compute_c_wr_en = '1' else loader_c_wr_row;
@@ -453,41 +444,55 @@ begin
 
     gen_panel_buffers : for bank_idx in 0 to PANEL_TILES-1 generate
     begin
-        a_wr_en_bank(bank_idx) <= '1' when loader_a_wr_en = '1' and loader_a_wr_bank = bank_idx else '0';
-        b_wr_en_bank(bank_idx) <= '1' when loader_b_wr_en = '1' and loader_b_wr_bank = bank_idx else '0';
+        gen_lane_buffers : for lane_idx in 0 to NUM_MACS-1 generate
+            constant copy_idx : natural := (bank_idx * NUM_MACS) + lane_idx;
+            constant lane_left : natural := ((lane_idx + 1) * LOCAL_W) - 1;
+        begin
+            a_wr_en_bank(copy_idx) <= '1' when loader_a_wr_en = '1' and loader_a_wr_bank = bank_idx else '0';
+            b_wr_en_bank(copy_idx) <= '1' when loader_b_wr_en = '1' and loader_b_wr_bank = bank_idx else '0';
 
-        u_a_buffer : entity work.tile_buffer_m10k
-            generic map (
-                TILE_SIZE => TILE_SIZE,
-                DATA_WIDTH => DATA_WIDTH
-            )
-            port map (
-                clk => clk,
-                wr_en => a_wr_en_bank(bank_idx),
-                wr_row => loader_a_wr_row,
-                wr_col => loader_a_wr_col,
-                wr_data => loader_a_wr_data,
-                rd_row => a_rd_row,
-                rd_col => a_rd_col,
-                rd_data => a_rd_data_bank(bank_idx)
-            );
+            u_a_buffer : entity work.tile_buffer_m10k
+                generic map (
+                    TILE_SIZE => TILE_SIZE,
+                    DATA_WIDTH => DATA_WIDTH
+                )
+                port map (
+                    clk => clk,
+                    wr_en => a_wr_en_bank(copy_idx),
+                    wr_row => loader_a_wr_row,
+                    wr_col => loader_a_wr_col,
+                    wr_data => loader_a_wr_data,
+                    rd_row => unsigned(engine_a_rd_row_flat(lane_left downto lane_left - LOCAL_W + 1)),
+                    rd_col => unsigned(engine_a_rd_col_flat(lane_left downto lane_left - LOCAL_W + 1)),
+                    rd_data => a_rd_data_bank(copy_idx)
+                );
 
-        u_b_buffer : entity work.tile_buffer_m10k
-            generic map (
-                TILE_SIZE => TILE_SIZE,
-                DATA_WIDTH => DATA_WIDTH
-            )
-            port map (
-                clk => clk,
-                wr_en => b_wr_en_bank(bank_idx),
-                wr_row => loader_b_wr_row,
-                wr_col => loader_b_wr_col,
-                wr_data => loader_b_wr_data,
-                rd_row => b_rd_row,
-                rd_col => b_rd_col,
-                rd_data => b_rd_data_bank(bank_idx)
-            );
+            u_b_buffer : entity work.tile_buffer_m10k
+                generic map (
+                    TILE_SIZE => TILE_SIZE,
+                    DATA_WIDTH => DATA_WIDTH
+                )
+                port map (
+                    clk => clk,
+                    wr_en => b_wr_en_bank(copy_idx),
+                    wr_row => loader_b_wr_row,
+                    wr_col => loader_b_wr_col,
+                    wr_data => loader_b_wr_data,
+                    rd_row => unsigned(engine_b_rd_row_flat(lane_left downto lane_left - LOCAL_W + 1)),
+                    rd_col => unsigned(engine_b_rd_col_flat(lane_left downto lane_left - LOCAL_W + 1)),
+                    rd_data => b_rd_data_bank(copy_idx)
+                );
+        end generate gen_lane_buffers;
     end generate gen_panel_buffers;
+
+    gen_compute_lane_data : for lane_idx in 0 to NUM_MACS-1 generate
+        constant data_left : natural := ((lane_idx + 1) * DATA_WIDTH) - 1;
+    begin
+        engine_a_rd_data_flat(data_left downto data_left - DATA_WIDTH + 1) <=
+            std_logic_vector(a_rd_data_bank((compute_panel_idx * NUM_MACS) + lane_idx));
+        engine_b_rd_data_flat(data_left downto data_left - DATA_WIDTH + 1) <=
+            std_logic_vector(b_rd_data_bank((compute_panel_idx * NUM_MACS) + lane_idx));
+    end generate gen_compute_lane_data;
 
     u_c_buffer : entity work.tile_buffer_m10k
         generic map (
@@ -505,23 +510,31 @@ begin
             rd_data => c_rd_data
         );
 
-    u_compute : entity work.matrix_tiled_compute_core
+    u_compute : entity work.tile_buffered_compute_engine
         generic map (
             TILE_SIZE => TILE_SIZE,
             NUM_MACS => NUM_MACS,
             DATA_WIDTH => DATA_WIDTH,
-            ACC_WIDTH => ACC_WIDTH,
-            MAC_PIPELINE_STAGES => MAC_PIPELINE_STAGES
+            ACC_WIDTH => ACC_WIDTH
         )
         port map (
             clk => clk,
             rst => core_rst,
-            start => core_start,
-            done => core_done,
-            a_tile => core_a_tile,
-            b_tile => core_b_tile,
-            c_tile_in => core_c_tile_in,
-            c_tile_out => core_c_tile_out,
+            start => engine_start,
+            done => engine_done,
+            a_rd_row_flat => engine_a_rd_row_flat,
+            a_rd_col_flat => engine_a_rd_col_flat,
+            a_rd_data_flat => engine_a_rd_data_flat,
+            b_rd_row_flat => engine_b_rd_row_flat,
+            b_rd_col_flat => engine_b_rd_col_flat,
+            b_rd_data_flat => engine_b_rd_data_flat,
+            c_rd_row => engine_c_rd_row,
+            c_rd_col => engine_c_rd_col,
+            c_rd_data => c_rd_data,
+            c_wr_en => compute_c_wr_en,
+            c_wr_row => compute_c_wr_row,
+            c_wr_col => compute_c_wr_col,
+            c_wr_data => compute_c_wr_data,
             mac_ops_issued => core_mac_ops_issued
         );
 
@@ -585,106 +598,40 @@ begin
     end process;
 
     process(clk, core_rst)
-        variable lr : natural;
-        variable lc : natural;
-        variable left_data : natural;
-        variable left_acc  : natural;
     begin
         if core_rst = '1' then
             compute_state <= COMPUTE_IDLE;
-            pack_idx <= 0;
-            unpack_idx <= 0;
             compute_panel_idx <= 0;
             compute_panel_offset <= 0;
-            core_start <= '0';
+            engine_start <= '0';
             sched_compute_done <= '0';
-            compute_c_wr_en <= '0';
-            compute_c_wr_row <= (others => '0');
-            compute_c_wr_col <= (others => '0');
-            compute_c_wr_data <= (others => '0');
-            a_rd_row <= (others => '0');
-            a_rd_col <= (others => '0');
-            b_rd_row <= (others => '0');
-            b_rd_col <= (others => '0');
-            pack_c_rd_row <= (others => '0');
-            pack_c_rd_col <= (others => '0');
-            core_a_tile <= (others => '0');
-            core_b_tile <= (others => '0');
-            core_c_tile_in <= (others => '0');
 
         elsif rising_edge(clk) then
-            core_start <= '0';
+            engine_start <= '0';
             sched_compute_done <= '0';
-            compute_c_wr_en <= '0';
 
             case compute_state is
                 when COMPUTE_IDLE =>
                     if sched_compute_start = '1' then
-                        pack_idx <= 0;
                         compute_panel_offset <= 0;
                         compute_panel_idx <= sched_compute_bank_base;
-                        compute_state <= PACK_SETUP;
+                        compute_state <= START_ENGINE;
                     end if;
 
-                when PACK_SETUP =>
-                    lr := local_row(pack_idx);
-                    lc := local_col(pack_idx);
-                    a_rd_row <= to_unsigned(lr, LOCAL_W);
-                    a_rd_col <= to_unsigned(lc, LOCAL_W);
-                    b_rd_row <= to_unsigned(lr, LOCAL_W);
-                    b_rd_col <= to_unsigned(lc, LOCAL_W);
-                    pack_c_rd_row <= to_unsigned(lr, LOCAL_W);
-                    pack_c_rd_col <= to_unsigned(lc, LOCAL_W);
-                    compute_state <= PACK_WAIT;
+                when START_ENGINE =>
+                    engine_start <= '1';
+                    compute_state <= WAIT_ENGINE;
 
-                when PACK_WAIT =>
-                    compute_state <= PACK_CAPTURE;
-
-                when PACK_CAPTURE =>
-                    left_data := ((pack_idx + 1) * DATA_WIDTH) - 1;
-                    left_acc  := ((pack_idx + 1) * ACC_WIDTH) - 1;
-                    core_a_tile(left_data downto left_data - DATA_WIDTH + 1) <= std_logic_vector(a_rd_data);
-                    core_b_tile(left_data downto left_data - DATA_WIDTH + 1) <= std_logic_vector(b_rd_data);
-                    core_c_tile_in(left_acc downto left_acc - ACC_WIDTH + 1) <= std_logic_vector(c_rd_data);
-
-                    if pack_idx = TILE_ELEMS-1 then
-                        compute_state <= START_CORE;
-                    else
-                        pack_idx <= pack_idx + 1;
-                        compute_state <= PACK_SETUP;
-                    end if;
-
-                when START_CORE =>
-                    core_start <= '1';
-                    compute_state <= WAIT_CORE;
-
-                when WAIT_CORE =>
-                    if core_done = '1' then
-                        unpack_idx <= 0;
-                        compute_state <= UNPACK_WRITE;
-                    end if;
-
-                when UNPACK_WRITE =>
-                    lr := local_row(unpack_idx);
-                    lc := local_col(unpack_idx);
-                    left_acc := ((unpack_idx + 1) * ACC_WIDTH) - 1;
-                    compute_c_wr_en <= '1';
-                    compute_c_wr_row <= to_unsigned(lr, LOCAL_W);
-                    compute_c_wr_col <= to_unsigned(lc, LOCAL_W);
-                    compute_c_wr_data <= signed(core_c_tile_out(left_acc downto left_acc - ACC_WIDTH + 1));
-
-                    if unpack_idx = TILE_ELEMS-1 then
+                when WAIT_ENGINE =>
+                    if engine_done = '1' then
                         compute_state <= COMPUTE_DONE_STATE;
-                    else
-                        unpack_idx <= unpack_idx + 1;
                     end if;
 
                 when COMPUTE_DONE_STATE =>
                     if compute_panel_offset + 1 < sched_panel_count then
                         compute_panel_offset <= compute_panel_offset + 1;
                         compute_panel_idx <= (compute_panel_idx + 1) mod PANEL_TILES;
-                        pack_idx <= 0;
-                        compute_state <= PACK_SETUP;
+                        compute_state <= START_ENGINE;
                     else
                         sched_compute_done <= '1';
                         compute_state <= COMPUTE_IDLE;

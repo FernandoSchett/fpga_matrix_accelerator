@@ -25,6 +25,7 @@ architecture sim of tb_command_interface is
     constant CMD_READ_STATUS   : std_logic_vector(7 downto 0) := x"3F";
     constant CMD_READ_COUNTERS : std_logic_vector(7 downto 0) := x"50";
     constant CMD_READ_TELEMETRY : std_logic_vector(7 downto 0) := x"54";
+    constant CMD_CHECKSUM_C    : std_logic_vector(7 downto 0) := x"58";
     constant RESP_ACK          : std_logic_vector(7 downto 0) := x"06";
 
     signal clk : std_logic := '0';
@@ -379,6 +380,38 @@ begin
         expect_tx_byte(tx_start, tx_byte, x"00", "STREAM_C[2] byte 1");
         expect_tx_byte(tx_start, tx_byte, x"00", "STREAM_C[2] byte 2");
         expect_tx_byte(tx_start, tx_byte, x"7F", "STREAM_C[2] byte 3");
+
+        send_byte(rx_valid, rx_byte, CMD_CHECKSUM_C);
+        send_word32(rx_valid, rx_byte, x"00000014");
+        send_byte(rx_valid, rx_byte, x"00");
+        send_byte(rx_valid, rx_byte, x"03");
+
+        host_data_out <= x"00000001";
+        wait_host_read(host_cmd_valid, host_cmd_write, host_cmd_ready,
+                       host_addr, 20, "CHECKSUM_C[0]");
+        wait until rising_edge(clk);
+        host_rd_valid <= '1';
+        wait until rising_edge(clk);
+        host_rd_valid <= '0';
+
+        host_data_out <= x"00000002";
+        wait_host_read(host_cmd_valid, host_cmd_write, host_cmd_ready,
+                       host_addr, 21, "CHECKSUM_C[1]");
+        wait until rising_edge(clk);
+        host_rd_valid <= '1';
+        wait until rising_edge(clk);
+        host_rd_valid <= '0';
+
+        host_data_out <= x"FFFFFFFF";
+        wait_host_read(host_cmd_valid, host_cmd_write, host_cmd_ready,
+                       host_addr, 22, "CHECKSUM_C[2]");
+        wait until rising_edge(clk);
+        host_rd_valid <= '1';
+        wait until rising_edge(clk);
+        host_rd_valid <= '0';
+
+        expect_tx_word32(tx_start, tx_byte, x"00000002", "CHECKSUM_C sum");
+        expect_tx_word32(tx_start, tx_byte, x"FFFFFFFC", "CHECKSUM_C xor");
 
         perf_total_cycles        <= to_unsigned(1, COUNTER_WIDTH);
         perf_load_cycles         <= to_unsigned(2, COUNTER_WIDTH);

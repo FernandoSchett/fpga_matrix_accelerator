@@ -200,6 +200,7 @@ function Get-RtlSources {
         "rtl/memory/sdram_bus_if.vhd",
         "rtl/compute/mac_unit.vhd",
         "rtl/compute/matrix_tiled_compute_core.vhd",
+        "rtl/compute/tile_buffered_compute_engine.vhd",
         "rtl/memory/matrix_single_port_ram.vhd",
         "rtl/memory/matrix_memory_map.vhd",
         "rtl/memory/tile_buffer_m10k.vhd",

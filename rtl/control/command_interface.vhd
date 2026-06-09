@@ -69,6 +69,7 @@ architecture rtl of command_interface is
     constant CMD_READ_STATUS   : std_logic_vector(7 downto 0) := x"3F"; -- '?'
     constant CMD_READ_COUNTERS : std_logic_vector(7 downto 0) := x"50"; -- 'P'
     constant CMD_READ_TELEMETRY : std_logic_vector(7 downto 0) := x"54"; -- 'T'
+    constant CMD_CHECKSUM_C    : std_logic_vector(7 downto 0) := x"58"; -- 'X'
 
     constant RESP_ACK : std_logic_vector(7 downto 0) := x"06";
     constant RESP_NAK : std_logic_vector(7 downto 0) := x"15";
@@ -85,6 +86,10 @@ architecture rtl of command_interface is
         ISSUE_CLEAR,
         ISSUE_READ_C,
         WAIT_READ_C,
+        ISSUE_CHECKSUM_C,
+        WAIT_CHECKSUM_C,
+        PREP_CHECKSUM_SUM,
+        PREP_CHECKSUM_XOR,
         PREP_STATUS,
         PREP_COUNTER,
         PREP_TELEMETRY,
@@ -114,6 +119,8 @@ architecture rtl of command_interface is
     signal tx_index     : integer range 0 to 3 := 0;
 
     signal counter_index   : integer range 0 to 7 := 0;
+    signal checksum_sum    : unsigned(31 downto 0) := (others => '0');
+    signal checksum_xor    : std_logic_vector(31 downto 0) := (others => '0');
 
     signal host_matrix_sel_reg : std_logic_vector(1 downto 0) := MATRIX_ID_A;
     signal host_addr_reg       : unsigned(ADDR_WIDTH-1 downto 0) := (others => '0');
@@ -180,6 +187,8 @@ begin
             tx_word_reg         <= (others => '0');
             tx_index            <= 0;
             counter_index       <= 0;
+            checksum_sum        <= (others => '0');
+            checksum_xor        <= (others => '0');
             host_matrix_sel_reg <= MATRIX_ID_A;
             host_addr_reg       <= (others => '0');
             host_data_in_reg    <= (others => '0');
@@ -204,7 +213,8 @@ begin
                         opcode_reg <= rx_byte;
 
                         if rx_byte = CMD_LOAD_A or rx_byte = CMD_LOAD_B or
-                           rx_byte = CMD_READ_C or rx_byte = CMD_STREAM_C then
+                           rx_byte = CMD_READ_C or rx_byte = CMD_STREAM_C or
+                           rx_byte = CMD_CHECKSUM_C then
                             addr_shift <= (others => '0');
                             state      <= RECV_ADDR;
 
@@ -253,7 +263,7 @@ begin
                                 host_cmd_write_reg <= '0';
                                 state         <= ISSUE_READ_C;
                             elsif opcode_reg = CMD_STREAM_A or opcode_reg = CMD_STREAM_B or
-                                  opcode_reg = CMD_STREAM_C then
+                                  opcode_reg = CMD_STREAM_C or opcode_reg = CMD_CHECKSUM_C then
                                 stream_addr_reg <= resize(unsigned(next_addr), ADDR_WIDTH);
                                 stream_count_shift <= (others => '0');
                                 state <= RECV_STREAM_COUNT;
@@ -301,13 +311,28 @@ begin
                             byte_count <= 0;
 
                             if unsigned(stream_count_shift(15 downto 8) & rx_byte) = 0 then
-                                state <= SEND_ACK;
+                                if opcode_reg = CMD_CHECKSUM_C then
+                                    checksum_sum <= (others => '0');
+                                    checksum_xor <= (others => '0');
+                                    counter_index <= 0;
+                                    state <= PREP_CHECKSUM_SUM;
+                                else
+                                    state <= SEND_ACK;
+                                end if;
                             elsif opcode_reg = CMD_STREAM_C then
                                 stream_ack_pending <= '1';
                                 host_addr_reg <= stream_addr_reg;
                                 host_cmd_valid_reg <= '1';
                                 host_cmd_write_reg <= '0';
                                 state <= ISSUE_READ_C;
+                            elsif opcode_reg = CMD_CHECKSUM_C then
+                                checksum_sum <= (others => '0');
+                                checksum_xor <= (others => '0');
+                                counter_index <= 0;
+                                host_addr_reg <= stream_addr_reg;
+                                host_cmd_valid_reg <= '1';
+                                host_cmd_write_reg <= '0';
+                                state <= ISSUE_CHECKSUM_C;
                             else
                                 state <= RECV_STREAM_DATA;
                             end if;
@@ -385,6 +410,44 @@ begin
                             state <= SEND_WORD;
                         end if;
                     end if;
+
+                when ISSUE_CHECKSUM_C =>
+                    host_cmd_valid_reg <= '1';
+                    host_cmd_write_reg <= '0';
+                    if host_cmd_ready = '1' then
+                        host_cmd_valid_reg <= '0';
+                        state <= WAIT_CHECKSUM_C;
+                    end if;
+
+                when WAIT_CHECKSUM_C =>
+                    if host_rd_valid = '1' then
+                        checksum_sum <= checksum_sum + unsigned(host_data_out);
+                        checksum_xor <= checksum_xor xor host_data_out;
+
+                        if stream_remaining <= 1 then
+                            stream_remaining <= 0;
+                            state <= PREP_CHECKSUM_SUM;
+                        else
+                            stream_remaining <= stream_remaining - 1;
+                            stream_addr_reg <= stream_addr_reg + 1;
+                            host_addr_reg <= stream_addr_reg + 1;
+                            host_cmd_valid_reg <= '1';
+                            host_cmd_write_reg <= '0';
+                            state <= ISSUE_CHECKSUM_C;
+                        end if;
+                    end if;
+
+                when PREP_CHECKSUM_SUM =>
+                    tx_word_reg <= std_logic_vector(checksum_sum);
+                    tx_index <= 0;
+                    counter_index <= 0;
+                    state <= SEND_WORD;
+
+                when PREP_CHECKSUM_XOR =>
+                    tx_word_reg <= checksum_xor;
+                    tx_index <= 0;
+                    counter_index <= 1;
+                    state <= SEND_WORD;
 
                 when PREP_STATUS =>
                     status_word := (others => '0');
@@ -504,6 +567,9 @@ begin
                             elsif opcode_reg = CMD_READ_TELEMETRY and counter_index < 7 then
                                 counter_index <= counter_index + 1;
                                 state         <= PREP_TELEMETRY;
+                            elsif opcode_reg = CMD_CHECKSUM_C and counter_index = 0 then
+                                counter_index <= 1;
+                                state         <= PREP_CHECKSUM_XOR;
                             elsif opcode_reg = CMD_STREAM_C and stream_remaining > 1 then
                                 stream_remaining <= stream_remaining - 1;
                                 stream_addr_reg <= stream_addr_reg + 1;

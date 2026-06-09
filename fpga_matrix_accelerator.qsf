@@ -33,6 +33,7 @@ set_global_assignment -name VHDL_FILE rtl/common/sigma_hex_display.vhd
 set_global_assignment -name VHDL_FILE rtl/memory/sdram_bus_if.vhd
 set_global_assignment -name VHDL_FILE rtl/compute/mac_unit.vhd
 set_global_assignment -name VHDL_FILE rtl/compute/matrix_tiled_compute_core.vhd
+set_global_assignment -name VHDL_FILE rtl/compute/tile_buffered_compute_engine.vhd
 set_global_assignment -name VHDL_FILE rtl/memory/matrix_single_port_ram.vhd
 set_global_assignment -name VHDL_FILE rtl/memory/matrix_memory_map.vhd
 set_global_assignment -name VHDL_FILE rtl/memory/tile_buffer_m10k.vhd

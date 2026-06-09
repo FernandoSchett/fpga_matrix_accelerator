@@ -444,6 +444,10 @@ Test-AllowedValue -Name "EnableSignaltap" -Value $EnableSignaltap -Allowed @("tr
 Test-AllowedValue -Name "SdramSimulationModel" -Value $SdramSimulationModel -Allowed @("true", "false")
 Test-AllowedValue -Name "AccumulateC" -Value $AccumulateC -Allowed @("true", "false")
 
+if ($SdramSimulationModel -eq "true" -and $N -gt 32) {
+    throw "SdramSimulationModel=true sintetiza a SDRAM em RAM interna. Para N=$N isso nao cabe/nao infere M10K de forma confiavel. Use -SdramSimulationModel false para a placa, ou teste com N<=32."
+}
+
 $generics = @{
     "N"                   = $N
     "TILE_SIZE"           = $TileSize

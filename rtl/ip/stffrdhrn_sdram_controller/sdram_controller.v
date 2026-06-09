@@ -131,7 +131,6 @@ output                     data_mask_high;
 reg  [HADDR_WIDTH-1:0]   haddr_r;
 reg  [15:0]              wr_data_r;
 reg  [15:0]              rd_data_r;
-reg                      busy;
 reg                      data_mask_low_r;
 reg                      data_mask_high_r;
 reg [SDRADDR_WIDTH-1:0]  addr_r;
@@ -144,6 +143,8 @@ wire                     data_mask_low, data_mask_high;
 assign data_mask_high = data_mask_high_r;
 assign data_mask_low  = data_mask_low_r;
 assign rd_data        = rd_data_r;
+assign busy           = (state != IDLE) ||
+                        (state == IDLE && refresh_cnt >= CYCLES_BETWEEN_REFRESH);
 
 /* Internal Wiring */
 reg [3:0] state_cnt;
@@ -178,7 +179,6 @@ always @ (posedge clk)
     haddr_r <= {HADDR_WIDTH{1'b0}};
     wr_data_r <= 16'b0;
     rd_data_r <= 16'b0;
-    busy <= 1'b0;
     end
   else
     begin
@@ -201,8 +201,6 @@ always @ (posedge clk)
       end
     else
       rd_ready_r <= 1'b0;
-
-        busy <= (next != IDLE);
 
     if (rd_enable)
       haddr_r <= rd_addr;

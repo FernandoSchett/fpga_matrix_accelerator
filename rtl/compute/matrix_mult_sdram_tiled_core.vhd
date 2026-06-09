@@ -34,10 +34,11 @@ entity matrix_mult_sdram_tiled_core is
 
         host_cmd_valid : in std_logic;
         host_cmd_write : in std_logic;
+        host_full_word_write : in std_logic;
         host_cmd_ready : out std_logic;
         matrix_sel     : in std_logic_vector(1 downto 0);
         cmd_addr       : in unsigned(clog2(N*N)-1 downto 0);
-        data_in        : in signed(DATA_WIDTH-1 downto 0);
+        data_in        : in std_logic_vector(SDRAM_DATA_W-1 downto 0);
 
         data_out : out signed(ACC_WIDTH-1 downto 0);
         rd_valid : out std_logic;
@@ -574,14 +575,19 @@ begin
                                                               BASE_B_BYTES,
                                                               BASE_C_BYTES,
                                                               SDRAM_ADDR_W);
-                    host_wdata_reg <= (others => '0');
-                    host_wdata_reg(DATA_WIDTH-1 downto 0) <= std_logic_vector(data_in);
-                    host_be_reg    <= (others => '0');
-                    host_be_reg(0) <= '1';
+                    if host_full_word_write = '1' then
+                        host_wdata_reg <= data_in;
+                        host_be_reg    <= (others => '1');
+                    else
+                        host_wdata_reg <= (others => '0');
+                        host_wdata_reg(DATA_WIDTH-1 downto 0) <= data_in(DATA_WIDTH-1 downto 0);
+                        host_be_reg    <= (others => '0');
+                        host_be_reg(0) <= '1';
+                    end if;
                 else
                     host_pending   <= '1';
                     host_write_reg <= '0';
-                    host_addr_reg  <= matrix_linear_byte_addr(MATRIX_ID_C,
+                    host_addr_reg  <= matrix_linear_byte_addr(matrix_sel,
                                                               to_integer(cmd_addr),
                                                               N,
                                                               DATA_WIDTH,

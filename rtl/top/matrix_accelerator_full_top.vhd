@@ -114,6 +114,7 @@ architecture rtl of matrix_accelerator_full_top is
 
     signal host_cmd_valid  : std_logic;
     signal host_cmd_write  : std_logic;
+    signal host_full_word_write : std_logic;
     signal host_cmd_ready  : std_logic;
     signal host_matrix_sel : std_logic_vector(1 downto 0);
     signal host_addr       : unsigned(ADDR_WIDTH-1 downto 0);
@@ -148,9 +149,22 @@ architecture rtl of matrix_accelerator_full_top is
     attribute preserve of debug_trigger_data : signal is true;
 
     constant DBG_HEARTBEAT_TOGGLE_CYCLES : positive := CLK_FREQ_HZ / 2;
+    constant DBG_ACTIVITY_STRETCH_CYCLES : positive := CLK_FREQ_HZ / 4;
 
     signal dbg_heartbeat_count : natural range 0 to DBG_HEARTBEAT_TOGGLE_CYCLES-1 := 0;
     signal dbg_heartbeat_reg   : std_logic := '0';
+    signal dbg_host_wr_count    : natural range 0 to DBG_ACTIVITY_STRETCH_CYCLES := 0;
+    signal dbg_start_count      : natural range 0 to DBG_ACTIVITY_STRETCH_CYCLES := 0;
+    signal dbg_load_count       : natural range 0 to DBG_ACTIVITY_STRETCH_CYCLES := 0;
+    signal dbg_compute_count    : natural range 0 to DBG_ACTIVITY_STRETCH_CYCLES := 0;
+    signal dbg_store_count      : natural range 0 to DBG_ACTIVITY_STRETCH_CYCLES := 0;
+    signal dbg_host_read_count  : natural range 0 to DBG_ACTIVITY_STRETCH_CYCLES := 0;
+    signal dbg_host_wr_visible   : std_logic;
+    signal dbg_start_visible     : std_logic;
+    signal dbg_load_visible      : std_logic;
+    signal dbg_compute_visible   : std_logic;
+    signal dbg_store_visible     : std_logic;
+    signal dbg_host_read_visible : std_logic;
 
     signal dbg_uart_rx_line_seen : std_logic := '0';
     signal dbg_uart_rx_seen      : std_logic := '0';
@@ -187,6 +201,12 @@ begin
 
     host_data_out <= std_logic_vector(resize(accel_data_out, HOST_DATA_WIDTH));
     system_error <= dbg_error_seen or status_memory_error;
+    dbg_host_wr_visible   <= '1' when dbg_host_wr_count /= 0 else '0';
+    dbg_start_visible     <= '1' when dbg_start_count /= 0 else '0';
+    dbg_load_visible      <= '1' when dbg_load_count /= 0 else '0';
+    dbg_compute_visible   <= '1' when dbg_compute_count /= 0 else '0';
+    dbg_store_visible     <= '1' when dbg_store_count /= 0 else '0';
+    dbg_host_read_visible <= '1' when dbg_host_read_count /= 0 else '0';
 
     rx_fifo_rd_en <= cmd_rx_ready and not rx_fifo_empty;
     cmd_rx_valid  <= rx_fifo_rd_en;
@@ -329,6 +349,7 @@ begin
             accelerator_error        => system_error,
             host_cmd_valid           => host_cmd_valid,
             host_cmd_write           => host_cmd_write,
+            host_full_word_write     => host_full_word_write,
             host_cmd_ready           => host_cmd_ready,
             host_matrix_sel          => host_matrix_sel,
             host_addr                => host_addr,
@@ -370,10 +391,11 @@ begin
             soft_clear  => cmd_clear,
             host_cmd_valid => host_cmd_valid,
             host_cmd_write => host_cmd_write,
+            host_full_word_write => host_full_word_write,
             host_cmd_ready => host_cmd_ready,
             matrix_sel     => host_matrix_sel,
             cmd_addr       => host_addr,
-            data_in        => signed(host_data_in(DATA_WIDTH-1 downto 0)),
+            data_in        => host_data_in(SDRAM_DATA_W-1 downto 0),
             data_out       => accel_data_out,
             rd_valid       => host_rd_valid,
             start       => accel_start,
@@ -425,6 +447,12 @@ begin
         if rst = '1' then
             dbg_heartbeat_count <= 0;
             dbg_heartbeat_reg   <= '0';
+            dbg_host_wr_count   <= 0;
+            dbg_start_count     <= 0;
+            dbg_load_count      <= 0;
+            dbg_compute_count   <= 0;
+            dbg_store_count     <= 0;
+            dbg_host_read_count <= 0;
 
             dbg_uart_rx_line_seen <= '0';
             dbg_uart_rx_seen     <= '0';
@@ -462,6 +490,36 @@ begin
                 dbg_done_seen         <= '0';
                 dbg_error_seen        <= '0';
                 dbg_cmd_clear_seen    <= '1';
+                dbg_host_wr_count     <= 0;
+                dbg_start_count       <= 0;
+                dbg_load_count        <= 0;
+                dbg_compute_count     <= 0;
+                dbg_store_count       <= 0;
+                dbg_host_read_count   <= 0;
+            end if;
+
+            if cmd_clear = '0' and dbg_host_wr_count /= 0 then
+                dbg_host_wr_count <= dbg_host_wr_count - 1;
+            end if;
+
+            if cmd_clear = '0' and dbg_start_count /= 0 then
+                dbg_start_count <= dbg_start_count - 1;
+            end if;
+
+            if cmd_clear = '0' and dbg_load_count /= 0 then
+                dbg_load_count <= dbg_load_count - 1;
+            end if;
+
+            if cmd_clear = '0' and dbg_compute_count /= 0 then
+                dbg_compute_count <= dbg_compute_count - 1;
+            end if;
+
+            if cmd_clear = '0' and dbg_store_count /= 0 then
+                dbg_store_count <= dbg_store_count - 1;
+            end if;
+
+            if cmd_clear = '0' and dbg_host_read_count /= 0 then
+                dbg_host_read_count <= dbg_host_read_count - 1;
             end if;
 
             if uart_rx_i = '0' then
@@ -488,20 +546,23 @@ begin
                 dbg_uart_tx_low_seen <= '1';
             end if;
 
-            if host_cmd_valid = '1' and host_cmd_write = '1' and host_cmd_ready = '1' then
+            if cmd_clear = '0' and host_cmd_valid = '1' and host_cmd_write = '1' and host_cmd_ready = '1' then
                 dbg_host_wr_seen <= '1';
+                dbg_host_wr_count <= DBG_ACTIVITY_STRETCH_CYCLES;
             end if;
 
             if host_cmd_valid = '1' and host_cmd_write = '0' and host_cmd_ready = '1' then
                 dbg_host_read_seen <= '1';
             end if;
 
-            if host_rd_valid = '1' then
+            if cmd_clear = '0' and host_rd_valid = '1' then
                 dbg_host_rvalid_seen <= '1';
+                dbg_host_read_count <= DBG_ACTIVITY_STRETCH_CYCLES;
             end if;
 
-            if cmd_start = '1' then
+            if cmd_clear = '0' and cmd_start = '1' then
                 dbg_cmd_start_seen <= '1';
+                dbg_start_count <= DBG_ACTIVITY_STRETCH_CYCLES;
             end if;
 
             if cmd_clear = '1' then
@@ -512,6 +573,18 @@ begin
                 dbg_done_seen <= '1';
             end if;
 
+            if cmd_clear = '0' and status_load_active = '1' then
+                dbg_load_count <= DBG_ACTIVITY_STRETCH_CYCLES;
+            end if;
+
+            if cmd_clear = '0' and status_compute_active = '1' then
+                dbg_compute_count <= DBG_ACTIVITY_STRETCH_CYCLES;
+            end if;
+
+            if cmd_clear = '0' and status_store_active = '1' then
+                dbg_store_count <= DBG_ACTIVITY_STRETCH_CYCLES;
+            end if;
+
             if status_memory_error = '1' or rx_fifo_overflow = '1' or rx_fifo_underflow = '1' or
             tx_fifo_overflow = '1' or tx_fifo_underflow = '1' then
                 dbg_error_seen <= '1';
@@ -519,26 +592,26 @@ begin
         end if;
     end process;
 
-    -- Debug LED map for board bring-up:
+    -- Debug LED map for board bring-up and SDRAM diagnosis:
     -- LEDR0: heartbeat/clock alive.
-    -- LEDR1: board reset input is active.
-    -- LEDR2: raw UART RX pin went low since reset; proves electrical RX activity.
-    -- LEDR3: UART byte decoded; proves baud/CLKS_PER_BIT is plausible.
-    -- LEDR4: command byte consumed from RX FIFO.
-    -- LEDR5: response byte queued by command interface.
-    -- LEDR6: UART TX line went low; proves ACK/data physically started leaving.
-    -- LEDR7: CLEAR command was decoded.
-    -- LEDR8: SDRAM PLL locked.
-    -- LEDR9: FIFO/protocol/memory error latch, cleared by CLEAR or board reset.
+    -- LEDR1: SDRAM PLL locked.
+    -- LEDR2: host write accepted, usually A/B streaming into SDRAM.
+    -- LEDR3: START command accepted.
+    -- LEDR4: tile load phase active, SDRAM -> M10K.
+    -- LEDR5: compute phase active.
+    -- LEDR6: tile store phase active, M10K -> SDRAM.
+    -- LEDR7: host read returned data, usually C streaming out.
+    -- LEDR8: done latched.
+    -- LEDR9: FIFO/protocol/SDRAM error latch, cleared by CLEAR or board reset.
     LEDR(0) <= dbg_heartbeat_reg;
-    LEDR(1) <= rst;
-    LEDR(2) <= dbg_uart_rx_line_seen;
-    LEDR(3) <= dbg_uart_rx_seen;
-    LEDR(4) <= dbg_cmd_rx_seen;
-    LEDR(5) <= dbg_cmd_tx_seen;
-    LEDR(6) <= dbg_uart_tx_low_seen;
-    LEDR(7) <= dbg_cmd_clear_seen;
-    LEDR(8) <= sdram_pll_locked;
+    LEDR(1) <= sdram_pll_locked;
+    LEDR(2) <= dbg_host_wr_visible or dbg_host_wr_seen;
+    LEDR(3) <= dbg_start_visible or dbg_cmd_start_seen;
+    LEDR(4) <= dbg_load_visible;
+    LEDR(5) <= dbg_compute_visible;
+    LEDR(6) <= dbg_store_visible;
+    LEDR(7) <= dbg_host_read_visible;
+    LEDR(8) <= dbg_done_seen;
     LEDR(9) <= dbg_error_seen;
 
     u_sigma_hex : entity work.sigma_hex_display
@@ -570,7 +643,13 @@ begin
     debug_probe_data(15) <= host_cmd_write;
     debug_probe_data(16) <= cmd_start;
     debug_probe_data(17) <= cmd_clear;
-    debug_probe_data(31 downto 18) <= std_logic_vector(resize(host_addr, 14));
+    debug_probe_data(18) <= status_load_active;
+    debug_probe_data(19) <= status_compute_active;
+    debug_probe_data(20) <= status_store_active;
+    debug_probe_data(21) <= status_tile_done;
+    debug_probe_data(22) <= status_memory_error;
+    debug_probe_data(23) <= sdram_pll_locked;
+    debug_probe_data(31 downto 24) <= std_logic_vector(resize(host_addr, 8));
     debug_probe_data(39 downto 32) <= cmd_rx_byte;
     debug_probe_data(47 downto 40) <= cmd_tx_byte;
     debug_probe_data(55 downto 48) <= tx_fifo_rd_data;
@@ -585,7 +664,7 @@ begin
     debug_trigger_data(4) <= cmd_rx_valid;
     debug_trigger_data(5) <= host_cmd_valid and host_cmd_write and host_cmd_ready;
     debug_trigger_data(6) <= host_cmd_valid and (not host_cmd_write) and host_cmd_ready;
-    debug_trigger_data(7) <= rx_fifo_overflow or tx_fifo_overflow or cmd_clear;
+    debug_trigger_data(7) <= status_memory_error or rx_fifo_overflow or tx_fifo_overflow or cmd_clear;
 
     gen_signaltap : if ENABLE_SIGNALTAP generate
         u_signaltap : entity work.signaltap_debug_core

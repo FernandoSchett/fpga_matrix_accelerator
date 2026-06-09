@@ -47,6 +47,7 @@ architecture sim of tb_command_interface is
 
     signal host_cmd_valid  : std_logic;
     signal host_cmd_write  : std_logic;
+    signal host_full_word_write : std_logic;
     signal host_cmd_ready  : std_logic := '0';
     signal host_matrix_sel : std_logic_vector(1 downto 0);
     signal host_addr       : unsigned(ADDR_WIDTH-1 downto 0);
@@ -232,6 +233,7 @@ begin
             accelerator_error        => accelerator_error,
             host_cmd_valid           => host_cmd_valid,
             host_cmd_write           => host_cmd_write,
+            host_full_word_write     => host_full_word_write,
             host_cmd_ready           => host_cmd_ready,
             host_matrix_sel          => host_matrix_sel,
             host_addr                => host_addr,
